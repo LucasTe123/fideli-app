@@ -959,6 +959,20 @@
       }
 
       async function resumePendingWallet(club) {
+        // A shared card URL is only an identifier, never an access credential.
+        // Browser cookies are shared with the installed PWA on the same device,
+        // so checking for a saved token here would let Safari reopen the card
+        // after someone shares its address. Keep the browser access needed by
+        // the short-lived install ticket, but require standalone mode for the
+        // durable customer-card route.
+        if (pwaCustomerId && !isStandalone() && !installTicketFromUrl) {
+          message(
+            "Tarjeta protegida",
+            "Esta tarjeta solo puede abrirse desde la PWA instalada en el dispositivo donde se agregó.",
+          );
+          return true;
+        }
+
         let pending = readPendingWallet();
         let renderedCachedCard = false;
         if (pending && !pending.deviceToken && deviceTokenFromUrl.length >= 32) {

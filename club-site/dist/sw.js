@@ -1,4 +1,4 @@
-const CACHE = "fideli-card-v40-private-share-link";
+const CACHE = "fideli-card-v41-standalone-card-guard";
 const SHELL = ["/", "/manifest.webmanifest", "/storefront.css", "/storefront.js", "/icons/fideli-192.svg", "/icons/fideli-512.svg"];
 
 self.addEventListener("install", (event) => {
