@@ -1,0 +1,16 @@
+{
+  "folders": [
+    {
+      "name": "Fideli",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "dart.flutterHotReloadOnSave": "all",
+    "editor.formatOnSave": true,
+    "files.exclude": {
+      "**/.dart_tool": true,
+      "**/build": true
+    }
+  }
+}

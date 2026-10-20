@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.57.4",
+    "passkit-generator": "npm:passkit-generator@3.6.1"
+  }
+}
+

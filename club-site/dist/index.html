@@ -1,0 +1,1975 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Fideli Club conecta programas de fidelidad, clientes y campañas con Apple Wallet y Google Wallet." />
+    <meta name="referrer" content="no-referrer" />
+    <meta id="robots-meta" name="robots" content="index,follow" />
+    <title>Fideli Club · Programas de fidelidad en Wallet</title>
+    <script>
+      (() => {
+        const query = new URLSearchParams(location.search);
+        const shopHost = location.hostname.endsWith(".fideli.site") && location.hostname !== "www.fideli.site"
+          ? location.hostname.slice(0, -".fideli.site".length) : "";
+        const storefront = shopHost && /^\/tienda\/?$/.test(location.pathname) ? shopHost : query.get("tienda") || "";
+        const isTenantHost = location.hostname.endsWith(".fideli.site") && location.hostname !== "www.fideli.site";
+        const business = query.get("business") || "";
+        const customer = query.get("customer") || "";
+        const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+        if (!business && !storefront && standalone) {
+          try {
+            let installed = localStorage.getItem("fideli-installed-wallet") || localStorage.getItem("fideli-last-wallet");
+            if (!installed) {
+              const candidates = Object.keys(localStorage)
+                .filter((key) => key.startsWith("fideli-wallet-"))
+                .map((key) => {
+                  try { return JSON.parse(localStorage.getItem(key) || "null"); } catch (_) { return null; }
+                })
+                .filter((item) => item?.installUrl)
+                .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+              installed = candidates[0]?.installUrl || "";
+            }
+            if (installed) {
+              document.documentElement.classList.add("enrollment-route", "pwa-card-route");
+              location.replace(installed);
+            }
+          } catch (_) {}
+        }
+        if (storefront) {
+          document.documentElement.classList.add("storefront-route");
+          document.querySelector("#robots-meta").content = "noindex,nofollow,noarchive";
+        } else if (business || isTenantHost) {
+          document.documentElement.classList.add("enrollment-route");
+          document.querySelector("#robots-meta").content = "noindex,nofollow,noarchive";
+        }
+        if (business && customer) document.documentElement.classList.add("pwa-card-route");
+        const link = document.createElement("link");
+        link.id = "pwa-manifest";
+        link.rel = "manifest";
+        link.crossOrigin = "anonymous";
+        if (business && customer) {
+          const manifest = new URL(`https://qdrssnhlbwkufnhgqfwo.supabase.co/functions/v1/wallet/api/public/pwa/manifest/${business}`);
+          manifest.searchParams.set("start", location.href);
+          link.href = manifest.toString();
+        } else {
+          link.href = "/manifest.webmanifest";
+        }
+        document.head.append(link);
+      })();
+    </script>
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta id="apple-mobile-web-app-title" name="apple-mobile-web-app-title" content="Fideli" />
+    <link id="apple-touch-icon" rel="apple-touch-icon" href="/icons/fideli-192.svg" />
+    <script>
+      (() => {
+        const business = new URLSearchParams(location.search).get("business") || "";
+        if (/^[0-9a-f-]{36}$/i.test(business)) {
+          document.querySelector("#apple-touch-icon").href = `https://qdrssnhlbwkufnhgqfwo.supabase.co/functions/v1/wallet/assets/google/logo/${business}.png`;
+        }
+      })();
+    </script>
+    <link id="site-favicon" rel="icon" type="image/svg+xml" href="/icons/fideli-192.svg" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js"></script>
+    <link rel="stylesheet" href="/storefront.css" />
+    <style>
+      :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body { margin: 0; min-height: 100vh; background: #fff; color: #251b1a; }
+      html.enrollment-route .public-site, html.enrollment-route .whatsapp-float { display: none !important; }
+      html.enrollment-route .enrollment[hidden] { display: block !important; }
+      html.pwa-card-route body { background: #fff; }
+      html.pwa-card-route .brand { display: none !important; }
+      html.pwa-card-route .enrollment { width: 100%; max-width: 470px; padding: 24px 18px 44px; }
+      html.pwa-card-route .card { padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+      html.pwa-card-route .status { width: min(100%, 350px); height: 474px; margin: max(24px, calc((100dvh - 620px) / 2)) auto 0; border-radius: 22px; background: #f1f1f3; animation: skeletonPulse 1.15s ease-in-out infinite alternate; }
+      html.pwa-card-route .status > * { visibility: hidden; }
+      html.enrollment-route body {
+        overflow-x: hidden;
+        background: #fff;
+      }
+      html.enrollment-route .enrollment { min-height: 100dvh; }
+      html.enrollment-route:not(.pwa-card-route) .card {
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+      html.enrollment-route:not(.pwa-card-route) input,
+      html.enrollment-route:not(.pwa-card-route) select { background: #f7f7f8; }
+      .enrollment { width: min(100%, 520px); margin: 0 auto; padding: 34px 22px 40px; }
+      .brand { margin-bottom: 28px; font-weight: 850; letter-spacing: .12em; }
+      .card { padding: 28px; border: 1px solid #eee7e5; border-radius: 26px; background: #fff; box-shadow: 0 18px 54px rgba(71, 43, 39, .09); }
+      .enrollment-identity { display: flex; margin: 0 0 34px; min-width: 0; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+      .enrollment-business-name { min-width: 0; overflow-wrap: anywhere; color: #151515; font-size: 1.65rem; font-weight: 850; line-height: 1.12; }
+      .mark { display: grid; width: 132px; height: 132px; overflow: hidden; place-items: center; border: 0; border-radius: 30px; background: #f7f7f8; color: #147ee8; font-size: 38px; font-weight: 850; }
+      .mark img { display: block; width: 100%; height: 100%; padding: 10px; object-fit: contain; }
+      h1 { margin: 20px 0 10px; font-size: clamp(2rem, 9vw, 2.8rem); line-height: 1.05; letter-spacing: -.035em; }
+      p { color: #6b5d5b; font-size: 1rem; line-height: 1.55; }
+      label { display: block; margin: 17px 0 7px; color: #171717; font-size: .94rem; font-weight: 720; }
+      input, select { width: 100%; min-height: 52px; padding: 13px 15px; border: 1px solid #e8e8eb; border-radius: 15px; background: #f7f7f8; color: #171717; font: inherit; }
+      input:focus, select:focus { outline: 3px solid rgba(20, 126, 232, .15); border-color: #147ee8; background: #fff; }
+      input.invalid { border-color: #c62828; background: #fffafa; }
+      .field-error { display: block; margin-top: 6px; color: #b42318; font-size: .82rem; font-weight: 680; }
+      button, .button { display: block; width: 100%; min-height: 54px; margin-top: 28px; padding: 14px 18px; border: 0; border-radius: 14px; background: linear-gradient(180deg, #2196f3, #0877d5); color: #fff; font: inherit; font-weight: 780; text-align: center; text-decoration: none; cursor: pointer; box-shadow: 0 10px 24px rgba(8, 119, 213, .2); }
+      button:disabled { cursor: wait; opacity: .65; }
+      .secondary { background: #f2ecea; color: #3d302e; }
+      .code { margin: 24px 0 4px; color: #251b1a; font-size: 1.45rem; font-weight: 850; letter-spacing: .12em; text-align: center; }
+      .fine { margin-top: 20px; font-size: .83rem; text-align: center; }
+      .hidden { position: absolute; left: -9999px; }
+      .status { padding: 28px 0; text-align: center; }
+      .wallet-result { text-align: center; }
+      .wallet-result .mark { margin: 0 auto; }
+      .wallet-result p { margin: 12px auto 0; max-width: 28rem; }
+      body.card-hub-mode { background: #fff; }
+      body.card-hub-mode .enrollment { width: 100%; max-width: 470px; padding: 24px 18px 44px; }
+      body.card-hub-mode .brand, body.card-hub-mode .whatsapp-float { display: none; }
+      body.card-hub-mode .card { padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+      .customer-card-hub { display: grid; min-height: calc(100dvh - 68px); align-content: center; gap: 18px; }
+      .card-carousel-dots { display: flex; min-height: 22px; margin: -7px auto 0; align-items: center; justify-content: center; gap: 7px; }
+      .card-carousel-dot { width: 7px; height: 7px; min-height: 7px; margin: 0; padding: 0; border: 0; border-radius: 999px; background: #c7c7cc; transition: width .28s cubic-bezier(.2,.8,.2,1), background .2s ease; }
+      .card-carousel-dot.active { width: 22px; background: #171719; }
+      .card-carousel-label { margin: -5px auto 0; color: #7c777a; font-size: .76rem; font-weight: 650; text-align: center; }
+      .customer-pass.pass-slide-left { animation: passSlideLeft .38s cubic-bezier(.2,.86,.25,1.08); }
+      .customer-pass.pass-slide-right { animation: passSlideRight .38s cubic-bezier(.2,.86,.25,1.08); }
+      .customer-pass { position: relative; overflow: hidden; width: min(100%, 350px); height: 474px; margin: 0 auto; padding: 14px 14px 16px; border-radius: 22px; background: var(--pass-color, #6750a4); color: #fff; box-shadow: 0 18px 42px rgba(31, 25, 33, .16); isolation: isolate; }
+      .customer-pass.expired { filter: grayscale(.55) saturate(.35); opacity: .58; }
+      .customer-pass::before { content: ""; position: absolute; z-index: -2; inset: 0; background-image: var(--pass-background, none); background-position: center; background-size: cover; }
+      .customer-pass.has-background::after { content: ""; position: absolute; z-index: -1; inset: 0; background: rgba(0,0,0,.36); }
+      .customer-pass.classic::before { display: none; }
+      .pass-header { display: flex; min-height: 44px; align-items: flex-start; justify-content: space-between; gap: 10px; }
+      .pass-business { display: flex; min-width: 0; align-items: center; gap: 8px; font-size: 18px; font-weight: 750; }
+      .pass-logo { display: block; max-width: 214px; height: 42px; object-fit: contain; object-position: left center; }
+      .pass-business-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .pass-total { flex: 0 0 auto; text-align: right; }
+      .pass-total small, .pass-label { display: block; font-size: 11px; font-weight: 760; letter-spacing: .06em; text-transform: uppercase; }
+      .pass-total strong { display: block; font-size: 19px; line-height: 1.05; }
+      .pass-artwork { position: relative; display: flex; height: calc(100% - 58px); margin-top: 14px; flex-direction: column; overflow: hidden; border-radius: 16px; }
+      .customer-pass:not(.has-background) .pass-artwork { border: 0; background: transparent; }
+      .pass-strip { display: contents; }
+      .customer-pass.classic .pass-artwork { border: 0; background: transparent; }
+      .customer-pass.classic .pass-strip { position: relative; display: block; flex: 0 0 auto; width: 100%; aspect-ratio: 375 / 123; overflow: hidden; background-color: rgba(0,0,0,.08); background-image: var(--pass-background, none); background-position: center; background-size: cover; }
+      .customer-pass.classic .pass-strip .stamp-grid { box-sizing: border-box; height: 100%; padding: 8px; grid-template-rows: repeat(var(--stamp-rows, 1), minmax(0, 1fr)); row-gap: 4px; align-items: center; align-content: stretch; justify-items: center; }
+      .customer-pass.classic .pass-strip .stamp-image { width: auto; max-width: 100%; height: 100%; min-height: 0; }
+      .pass-nonstamp-strip { display: none; }
+      .customer-pass.classic .pass-nonstamp-strip { display: block; flex: 0 0 auto; width: 100%; aspect-ratio: 375 / 123; background-image: var(--pass-background, none); background-position: center; background-size: cover; }
+      .customer-pass.classic .pass-content { flex: 1; }
+      .stamp-grid { display: grid; grid-template-columns: repeat(var(--stamp-columns, 4), minmax(0, 1fr)); gap: 9px 12px; padding: 14px 8px 0; }
+      .stamp-image { width: 100%; aspect-ratio: 1; object-fit: contain; opacity: .20; filter: none; transform: scale(.84); transition: opacity .25s ease, transform .32s cubic-bezier(.2,.8,.25,1); }
+      .stamp-image.active { opacity: 1; transform: scale(1.08); }
+      .pass-spacer { flex: 1; }
+      .pass-qr { display: grid; width: 150px; min-height: 138px; margin: 14px auto; padding: 0 6px 6px; place-items: center; overflow: hidden; border-radius: 9px; background: #fff; color: #171719; }
+      .pass-qr.empty { display: none; }
+      .pass-qr img { display: block; width: 138px; height: 138px; object-fit: contain; image-rendering: pixelated; }
+      .pass-qr-code { margin-top: -2px; font-size: 14px; line-height: 1.1; letter-spacing: .02em; }
+      .pass-meta { display: flex; padding: 0 16px 16px; align-items: flex-end; justify-content: space-between; gap: 16px; }
+      .pass-value { margin-top: 3px; font-size: 21px; font-weight: 760; line-height: 1.15; }
+      .pass-value.large { font-size: 30px; }
+      .pass-content { display: flex; box-sizing: border-box; height: 100%; padding: 6px 16px 0; flex-direction: column; }
+      .pass-content .pass-qr { margin-top: auto; margin-bottom: 14px; }
+      .customer-pass.gift-card .pass-content { padding-top: 7px; }
+      .customer-pass.gift-card .pass-value { font-size: 23px; font-weight: 500; }
+      .wallet-actions { display: grid; width: min(100%, 350px); margin: 0 auto; gap: 10px; }
+      .wallet-actions button, .wallet-actions .button { display: flex; min-height: 54px; margin: 0; align-items: center; justify-content: center; gap: 10px; border-radius: 15px; background: #111; color: #fff; text-decoration: none; }
+      .wallet-actions .button[aria-disabled="true"] { cursor: default; opacity: .45; pointer-events: none; }
+      .wallet-actions .google-wallet { background: #fff; color: #111; border: 1px solid #d7d7da; }
+      .wallet-actions .home-screen { background: #f0f0f2; color: #161619; }
+      .notification-toggle-row { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 18px; padding: 9px 12px 9px 17px; border-radius: 17px; background: #f0f0f2; color: #161619; font-weight: 720; }
+      .notification-switch { position: relative; display: inline-flex; flex: 0 0 auto; width: 51px; height: 31px; }
+      .notification-switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+      .notification-switch span { position: absolute; inset: 0; border-radius: 999px; background: #d2d2d7; transition: background .25s ease; }
+      .notification-switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 7px rgba(0,0,0,.22); transition: transform .3s cubic-bezier(.2,.85,.3,1.15); }
+      .notification-switch input:checked + span { background: #34c759; }
+      .notification-switch input:checked + span::after { transform: translateX(20px); }
+      .notification-switch input:focus-visible + span { outline: 3px solid rgba(0,122,255,.25); outline-offset: 2px; }
+      .wallet-actions button:disabled { cursor: default; opacity: .45; }
+      .install-sheet-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; align-items: end; background: rgba(0,0,0,.22); backdrop-filter: blur(3px); }
+      .install-sheet { padding: 13px 22px calc(25px + env(safe-area-inset-bottom)); border-radius: 26px 26px 0 0; background: #fff; color: #18171a; box-shadow: 0 -20px 60px rgba(0,0,0,.16); animation: sheetIn .42s cubic-bezier(.2,.9,.25,1.08); }
+      .install-grabber { width: 38px; height: 5px; margin: 0 auto 22px; border-radius: 999px; background: #d0d0d3; }
+      .install-sheet h2 { margin: 0; font-size: 1.35rem; }
+      .install-sheet p { margin: 10px 0 0; }
+      .install-sheet button { margin-top: 18px; background: #111; }
+      .install-sheet button.secondary { background: #767680; color: #fff; }
+      .hub-toast { position: fixed; z-index: 120; top: max(14px, env(safe-area-inset-top)); left: 50%; padding: 11px 17px; border-radius: 999px; background: rgba(25,25,27,.9); color: #fff; font-size: .9rem; font-weight: 700; transform: translate(-50%,-130%); transition: transform .45s cubic-bezier(.2,.9,.2,1.15); backdrop-filter: blur(16px); }
+      .hub-toast.visible { transform: translate(-50%,0); }
+      @keyframes skeletonPulse { from { opacity: .55; transform: scale(.985); } to { opacity: 1; transform: scale(1); } }
+      @keyframes sheetIn { from { transform: translateY(105%); } to { transform: translateY(0); } }
+      @keyframes passSlideLeft { from { opacity: .35; transform: translateX(42px) scale(.96); } to { opacity: 1; transform: none; } }
+      @keyframes passSlideRight { from { opacity: .35; transform: translateX(-42px) scale(.96); } to { opacity: 1; transform: none; } }
+      .spinner { width: 34px; height: 34px; margin: 0 auto 14px; border: 4px solid #ddd2e2; border-top-color: #6750a4; border-radius: 50%; animation: spin .8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .public-site { --ink: #151218; --muted: #6f6872; --line: rgba(28, 21, 31, .11); --accent: #a9483f; background: #fbfafc; color: var(--ink); }
+      .site-shell { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
+      .site-nav { position: sticky; z-index: 10; top: 0; border-bottom: 1px solid rgba(28, 21, 31, .07); background: rgba(251, 250, 252, .88); backdrop-filter: blur(20px) saturate(170%); }
+      .site-nav .site-shell { display: flex; min-height: 70px; align-items: center; justify-content: space-between; gap: 24px; }
+      .site-logo { color: var(--ink); font-size: 1.02rem; font-weight: 900; letter-spacing: .15em; text-decoration: none; }
+      .site-links { display: flex; align-items: center; gap: 28px; }
+      .site-links a { color: #5e5761; font-size: .94rem; font-weight: 650; text-decoration: none; }
+      .site-links a:hover { color: var(--ink); }
+      .contact-link { padding: 10px 16px; border-radius: 999px; background: var(--ink); color: #fff !important; }
+      .hero { padding: 92px 0 74px; overflow: hidden; }
+      .hero-grid { display: grid; grid-template-columns: minmax(0, 1.04fr) minmax(390px, .96fr); align-items: center; gap: clamp(48px, 8vw, 110px); }
+      .eyebrow { margin: 0 0 18px; color: var(--accent); font-size: .79rem; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+      .hero h1 { max-width: 760px; margin: 0; font-size: clamp(3.2rem, 7vw, 6.7rem); line-height: .92; letter-spacing: -.07em; }
+      .hero-copy { max-width: 590px; margin: 28px 0 0; color: var(--muted); font-size: clamp(1.05rem, 1.7vw, 1.25rem); line-height: 1.58; }
+      .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+      .hero-actions .button { display: inline-flex; width: auto; min-height: 52px; margin: 0; align-items: center; justify-content: center; padding: 14px 21px; border-radius: 999px; background: var(--ink); }
+      .hero-actions .button.secondary { border: 1px solid var(--line); background: #fff; color: var(--ink); }
+      .platform-note { margin: 20px 0 0; color: #8a838c; font-size: .86rem; }
+      .wallet-stage { position: relative; min-height: 520px; }
+      .wallet-pass { position: absolute; overflow: hidden; width: min(100%, 420px); aspect-ratio: 1.55; padding: 27px; border-radius: 30px; color: #fff; box-shadow: 0 36px 90px rgba(34, 22, 38, .24); }
+      .wallet-pass.primary { top: 40px; right: 0; z-index: 2; background: #a9483f; transform: rotate(3deg); }
+      .wallet-pass.secondary-pass { bottom: 30px; left: 0; background: #1c1a1e; transform: rotate(-5deg); }
+      .pass-top, .pass-bottom { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+      .pass-brand { display: flex; align-items: center; gap: 11px; font-weight: 820; }
+      .pass-mark { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 12px; background: rgba(255,255,255,.16); }
+      .pass-count { text-align: right; font-weight: 800; }
+      .pass-count small, .pass-bottom small { display: block; margin-bottom: 3px; font-size: .65rem; letter-spacing: .11em; opacity: .76; text-transform: uppercase; }
+      .stamp-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 38px 0 34px; }
+      .stamp { display: grid; aspect-ratio: 1; place-items: center; border-radius: 14px; background: rgba(255,255,255,.13); font-size: 1.2rem; font-weight: 900; }
+      .stamp.done { background: rgba(255,255,255,.92); color: #a9483f; }
+      .pass-bottom { align-items: flex-end; }
+      .pass-bottom strong { display: block; font-size: 1.05rem; }
+      .qr-mini { display: grid; width: 53px; height: 53px; place-items: center; border-radius: 9px; background: #fff; color: #171419; font-size: 1.25rem; letter-spacing: -.18em; }
+      .section { padding: 88px 0; }
+      .section.soft { background: #f2eff4; }
+      .section-heading { display: flex; margin-bottom: 38px; align-items: end; justify-content: space-between; gap: 30px; }
+      .section-heading h2 { max-width: 710px; margin: 0; font-size: clamp(2.2rem, 5vw, 4.4rem); line-height: .98; letter-spacing: -.055em; }
+      .section-heading p { max-width: 430px; margin: 0; color: var(--muted); font-size: 1rem; line-height: 1.6; }
+      .feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .feature { min-height: 280px; padding: 31px; border: 1px solid var(--line); border-radius: 30px; background: #fff; }
+      .feature-number { color: var(--accent); font-size: .78rem; font-weight: 850; letter-spacing: .12em; }
+      .feature h3 { margin: 56px 0 12px; font-size: clamp(1.65rem, 3vw, 2.35rem); letter-spacing: -.04em; }
+      .feature p { max-width: 430px; margin: 0; color: var(--muted); font-size: 1rem; line-height: 1.58; }
+      .benefit-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+      .benefit { padding: 26px; border: 1px solid var(--line); border-radius: 25px; background: #fff; }
+      .benefit-icon { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 13px; background: #f0e6e5; color: var(--accent); font-weight: 900; }
+      .benefit h3 { margin: 34px 0 10px; font-size: 1.25rem; letter-spacing: -.025em; }
+      .benefit p { margin: 0; color: var(--muted); font-size: .96rem; line-height: 1.55; }
+      .operations { display: grid; grid-template-columns: .9fr 1.1fr; gap: 56px; align-items: center; }
+      .operations-copy h2 { margin: 0; font-size: clamp(2.4rem, 5vw, 4.7rem); line-height: .96; letter-spacing: -.058em; }
+      .operations-copy p { margin: 22px 0 0; color: var(--muted); font-size: 1.04rem; line-height: 1.62; }
+      .dashboard-preview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 32px; background: #ebe7ed; box-shadow: 0 24px 70px rgba(31, 23, 34, .12); }
+      .dashboard-tile { min-height: 176px; padding: 22px; border-radius: 24px; background: #fff; }
+      .dashboard-tile.dark { background: #1b181d; color: #fff; }
+      .dashboard-tile.accent { background: var(--accent); color: #fff; }
+      .dashboard-tile.wide { grid-column: 1 / -1; min-height: 128px; }
+      .dashboard-tile small { display: block; margin-bottom: 49px; color: currentColor; font-size: .68rem; font-weight: 850; letter-spacing: .12em; opacity: .66; text-transform: uppercase; }
+      .dashboard-tile.wide small { margin-bottom: 24px; }
+      .dashboard-tile strong { display: block; font-size: 1.35rem; letter-spacing: -.025em; }
+      .dashboard-tile span { display: block; margin-top: 6px; color: currentColor; font-size: .84rem; line-height: 1.4; opacity: .67; }
+      .platform-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+      .platform-card { padding: 38px; border-radius: 32px; background: #171419; color: #fff; }
+      .platform-card.google { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+      .platform-card .platform-icon { font-size: 2rem; }
+      .platform-card h3 { margin: 66px 0 12px; font-size: clamp(1.8rem, 4vw, 3rem); letter-spacing: -.045em; }
+      .platform-card p { max-width: 470px; margin: 0; color: rgba(255,255,255,.7); font-size: 1rem; line-height: 1.6; }
+      .platform-card.google p { color: var(--muted); }
+      .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; counter-reset: steps; }
+      .step { padding-top: 22px; border-top: 1px solid var(--line); counter-increment: steps; }
+      .step::before { content: "0" counter(steps); color: var(--accent); font-size: .78rem; font-weight: 850; }
+      .step h3 { margin: 26px 0 10px; font-size: 1.3rem; }
+      .step p { margin: 0; color: var(--muted); font-size: .95rem; line-height: 1.55; }
+      .support { display: grid; grid-template-columns: 1.15fr .85fr; gap: 54px; align-items: center; padding: 52px; border-radius: 36px; background: var(--accent); color: #fff; }
+      .support h2 { margin: 0; font-size: clamp(2.3rem, 5vw, 4.6rem); line-height: .95; letter-spacing: -.055em; }
+      .support p { margin: 0 0 16px; color: rgba(255,255,255,.78); line-height: 1.6; }
+      .support a { color: #fff; font-weight: 760; text-decoration: none; }
+      .site-footer { padding: 34px 0 50px; }
+      .site-footer .site-shell { display: flex; justify-content: space-between; gap: 22px; color: #817983; font-size: .85rem; }
+      .site-footer a { color: inherit; }
+      .whatsapp-float {
+        position: fixed;
+        z-index: 40;
+        right: max(20px, env(safe-area-inset-right));
+        bottom: max(20px, env(safe-area-inset-bottom));
+        display: grid;
+        width: 62px;
+        height: 62px;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, .46);
+        border-radius: 50%;
+        background: #25d366;
+        color: #fff;
+        box-shadow: 0 12px 30px rgba(20, 145, 72, .34), 0 0 0 7px rgba(37, 211, 102, .11), 0 0 28px rgba(37, 211, 102, .42);
+        transition: transform .25s cubic-bezier(.2, .8, .2, 1), box-shadow .25s ease;
+        animation: whatsappGlow 2.8s ease-in-out infinite;
+      }
+      .whatsapp-float:hover { transform: translateY(-3px) scale(1.04); box-shadow: 0 16px 36px rgba(20, 145, 72, .4), 0 0 0 9px rgba(37, 211, 102, .13), 0 0 34px rgba(37, 211, 102, .54); }
+      .whatsapp-float:focus-visible { outline: 4px solid rgba(37, 211, 102, .28); outline-offset: 4px; }
+      .whatsapp-float svg { width: 31px; height: 31px; fill: currentColor; }
+      @keyframes whatsappGlow {
+        0%, 100% { box-shadow: 0 12px 30px rgba(20, 145, 72, .34), 0 0 0 7px rgba(37, 211, 102, .10), 0 0 24px rgba(37, 211, 102, .34); }
+        50% { box-shadow: 0 14px 34px rgba(20, 145, 72, .4), 0 0 0 11px rgba(37, 211, 102, .04), 0 0 38px rgba(37, 211, 102, .58); }
+      }
+      @media (max-width: 860px) {
+        .site-links a:not(.contact-link) { display: none; }
+        .hero { padding-top: 62px; }
+        .hero-grid { grid-template-columns: 1fr; }
+        .wallet-stage { width: min(100%, 520px); margin: 0 auto; }
+        .section-heading { display: block; }
+        .section-heading p { margin-top: 18px; }
+        .support { grid-template-columns: 1fr; }
+        .benefit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .operations { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 620px) {
+        .site-shell { width: min(100% - 28px, 1160px); }
+        .hero { padding: 52px 0 46px; }
+        .hero h1 { font-size: clamp(3.1rem, 16vw, 5rem); }
+        .wallet-stage { min-height: 390px; }
+        .wallet-pass { width: 88%; padding: 20px; border-radius: 24px; }
+        .wallet-pass.primary { top: 16px; }
+        .wallet-pass.secondary-pass { bottom: 8px; }
+        .stamp-row { margin: 23px 0 20px; gap: 7px; }
+        .stamp { border-radius: 10px; }
+        .feature-grid, .platform-grid, .steps, .benefit-grid { grid-template-columns: 1fr; }
+        .feature { min-height: 235px; }
+        .section { padding: 66px 0; }
+        .support { padding: 34px 26px; }
+        .site-footer .site-shell { flex-direction: column; }
+      }
+      @media (max-width: 420px) { .enrollment { padding: 26px 18px 32px; } }
+      @media (prefers-reduced-motion: reduce) { .whatsapp-float { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <div class="public-site" id="public-site">
+      <nav class="site-nav" aria-label="Navegación principal">
+        <div class="site-shell">
+          <a class="site-logo" href="#inicio">FIDELI</a>
+          <div class="site-links">
+            <a href="#producto">Producto</a>
+            <a href="#beneficios">Beneficios</a>
+            <a href="#wallets">Wallets</a>
+            <a href="#funciona">Cómo funciona</a>
+            <a class="contact-link" href="#soporte">Contacto</a>
+          </div>
+        </div>
+      </nav>
+      <main>
+        <section class="hero" id="inicio">
+          <div class="site-shell hero-grid">
+            <div>
+              <p class="eyebrow">Fidelidad en el teléfono de tus clientes</p>
+              <h1>Tu club vive en Wallet.</h1>
+              <p class="hero-copy">Convierte cada compra en una razón para volver. Crea programas de sellos, puntos, membresías y regalos que tus clientes llevan en Apple Wallet o Google Wallet.</p>
+              <div class="hero-actions">
+                <a class="button" href="mailto:lucastejerina790@gmail.com?subject=Quiero%20conocer%20Fideli">Hablar con Fideli</a>
+                <a class="button secondary" href="#producto">Conocer el producto</a>
+              </div>
+              <p class="platform-note">Disponible para iPhone y Android.</p>
+            </div>
+            <div class="wallet-stage" aria-label="Vista previa de tarjetas Fideli">
+              <article class="wallet-pass primary">
+                <div class="pass-top">
+                  <div class="pass-brand"><span class="pass-mark">F</span><span>Club principal</span></div>
+                  <div class="pass-count"><small>Sellos</small>4 / 7</div>
+                </div>
+                <div class="stamp-row" aria-hidden="true">
+                  <span class="stamp done">✓</span><span class="stamp done">✓</span><span class="stamp done">✓</span><span class="stamp done">✓</span><span class="stamp">•</span>
+                </div>
+                <div class="pass-bottom"><div><small>Cliente</small><strong>Tu cliente</strong></div><span class="qr-mini">▖▗<br>▝▘</span></div>
+              </article>
+              <article class="wallet-pass secondary-pass">
+                <div class="pass-top"><div class="pass-brand"><span class="pass-mark">★</span><span>Membresía</span></div><div class="pass-count"><small>Estado</small>Activa</div></div>
+                <div class="stamp-row" aria-hidden="true"><span class="stamp">●</span><span class="stamp">●</span><span class="stamp">●</span><span class="stamp">●</span><span class="stamp">●</span></div>
+                <div class="pass-bottom"><div><small>Vigencia</small><strong>Siempre contigo</strong></div><span class="qr-mini">▖▗<br>▝▘</span></div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section soft" id="producto">
+          <div class="site-shell">
+            <div class="section-heading"><h2>Todo el programa, en un solo lugar.</h2><p>Fideli une la operación del negocio con una experiencia sencilla para cada cliente.</p></div>
+            <div class="feature-grid">
+              <article class="feature"><span class="feature-number">01</span><h3>Programas</h3><p>Configura sellos, puntos, membresías y tarjetas regalo con reglas y recompensas propias.</p></article>
+              <article class="feature"><span class="feature-number">02</span><h3>Wallet Studio</h3><p>Personaliza colores, logotipo, fondo, iconos y contenido antes de publicar cada tarjeta.</p></article>
+              <article class="feature"><span class="feature-number">03</span><h3>Clientes</h3><p>Consulta perfiles, progreso e historial para atender a cada persona desde su código QR.</p></article>
+              <article class="feature"><span class="feature-number">04</span><h3>Campañas</h3><p>Envía novedades breves a todos, a clientes inactivos o a una persona seleccionada.</p></article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="beneficios">
+          <div class="site-shell">
+            <div class="section-heading"><h2>Más clientes que vuelven. Menos trabajo manual.</h2><p>Fideli ayuda a que un programa de fidelidad sea fácil de usar para el negocio y también para sus clientes.</p></div>
+            <div class="benefit-grid">
+              <article class="benefit"><span class="benefit-icon">01</span><h3>Sin tarjetas físicas</h3><p>El cliente guarda su tarjeta en la Wallet que ya tiene en el teléfono. No necesita recordar plásticos ni descargar otra aplicación.</p></article>
+              <article class="benefit"><span class="benefit-icon">02</span><h3>Atención más rápida</h3><p>Un código QR identifica al cliente y permite registrar sellos, puntos, visitas, saldos o accesos desde el negocio.</p></article>
+              <article class="benefit"><span class="benefit-icon">03</span><h3>Tu marca siempre visible</h3><p>El logotipo, los colores y las imágenes del negocio acompañan al cliente dentro de su propia Wallet.</p></article>
+              <article class="benefit"><span class="benefit-icon">04</span><h3>Comunicación directa</h3><p>Envía campañas a todos, a clientes inactivos o a una persona específica, sin llenar la experiencia de mensajes innecesarios.</p></article>
+              <article class="benefit"><span class="benefit-icon">05</span><h3>Historial útil</h3><p>Consulta cuándo se registró cada movimiento, recompensa o visita para atender mejor y mantener el control.</p></article>
+              <article class="benefit"><span class="benefit-icon">06</span><h3>iPhone y Android</h3><p>Administra una misma estrategia y ofrece la tarjeta adecuada en Apple Wallet o Google Wallet según el dispositivo.</p></article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section soft">
+          <div class="site-shell operations">
+            <div class="operations-copy">
+              <p class="eyebrow">Tu app de administración</p>
+              <h2>Todos tus apartados conectados.</h2>
+              <p>La portada pública presenta Fideli. La operación privada vive dentro de la app: allí el negocio configura su identidad, crea programas, atiende clientes, envía campañas y diseña cada tarjeta.</p>
+            </div>
+            <div class="dashboard-preview" aria-label="Apartados de administración de Fideli">
+              <article class="dashboard-tile"><small>Configurar</small><strong>Mi negocio</strong><span>Nombre, categoría, icono e identidad.</span></article>
+              <article class="dashboard-tile accent"><small>Fidelizar</small><strong>Programas</strong><span>Reglas, recompensas y QR.</span></article>
+              <article class="dashboard-tile dark"><small>Atender</small><strong>Clientes</strong><span>Perfiles, progreso e historial.</span></article>
+              <article class="dashboard-tile"><small>Comunicar</small><strong>Campañas</strong><span>Mensajes segmentados y promociones.</span></article>
+              <article class="dashboard-tile dark wide"><small>Personalizar para ambas plataformas</small><strong>Wallet Studio</strong><span>Vista previa, colores, imágenes, iconos y formato de cada tarjeta.</span></article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="wallets">
+          <div class="site-shell">
+            <div class="section-heading"><h2>Una experiencia para las dos Wallets.</h2><p>El contenido, el progreso y las reglas del programa se mantienen coordinados en ambos ecosistemas.</p></div>
+            <div class="platform-grid">
+              <article class="platform-card"><div class="platform-icon"></div><h3>Apple Wallet</h3><p>Tarjetas actualizables, código QR y avisos del programa directamente en iPhone.</p></article>
+              <article class="platform-card google"><div class="platform-icon">G</div><h3>Google Wallet</h3><p>La misma información esencial y el mismo programa disponibles para clientes Android.</p></article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section soft" id="funciona">
+          <div class="site-shell">
+            <div class="section-heading"><h2>Del QR a Wallet en tres pasos.</h2></div>
+            <div class="steps">
+              <article class="step"><h3>El negocio crea</h3><p>Define el programa, configura la tarjeta y obtiene su QR de inscripción.</p></article>
+              <article class="step"><h3>El cliente se registra</h3><p>Escanea el QR, completa sus datos y agrega la tarjeta a su Wallet.</p></article>
+              <article class="step"><h3>Fideli actualiza</h3><p>Los sellos, puntos, saldos o estados cambian en la tarjeta cuando el negocio los administra.</p></article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="soporte">
+          <div class="site-shell support">
+            <h2>Hablemos de tu programa.</h2>
+            <div><p>Para consultas, soporte o información sobre Fideli Club, contáctanos directamente.</p><a href="mailto:lucastejerina790@gmail.com">lucastejerina790@gmail.com</a><br><a href="tel:+59169232511">+591 69232511</a></div>
+          </div>
+        </section>
+      </main>
+      <footer class="site-footer"><div class="site-shell"><span>© 2026 Fideli Club</span><span>Programas de fidelidad para Apple Wallet y Google Wallet.</span></div></footer>
+    </div>
+    <main id="storefront-public" class="storefront-page" hidden></main>
+    <main class="enrollment" id="enrollment" hidden>
+      <section class="card" id="app" aria-live="polite">
+        <div class="status"><div class="spinner"></div><p>Abriendo el club…</p></div>
+      </section>
+    </main>
+    <a
+      class="whatsapp-float"
+      href="https://wa.me/59169232511?text=Hola%2C%20quiero%20conocer%20Fideli"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Escribir a Fideli por WhatsApp"
+      title="Escríbenos por WhatsApp"
+    >
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M16.04 3.2A12.8 12.8 0 0 0 5.14 22.7L3.2 29.8l7.27-1.9a12.8 12.8 0 1 0 5.57-24.7Zm0 23.27c-1.9 0-3.76-.51-5.38-1.48l-.39-.23-4.31 1.13 1.15-4.2-.25-.41a10.46 10.46 0 1 1 9.18 5.19Zm5.74-7.84c-.31-.16-1.86-.92-2.15-1.02-.29-.11-.5-.16-.71.16-.21.31-.81 1.02-1 1.23-.18.21-.36.24-.68.08-.31-.16-1.33-.49-2.53-1.56a9.48 9.48 0 0 1-1.75-2.18c-.18-.31-.02-.48.14-.64.14-.14.31-.36.47-.55.16-.18.21-.31.31-.52.11-.21.05-.39-.03-.55-.08-.16-.71-1.71-.97-2.34-.25-.62-.51-.54-.71-.55h-.6c-.21 0-.55.08-.84.39-.29.31-1.1 1.08-1.1 2.63 0 1.55 1.13 3.05 1.29 3.26.16.21 2.22 3.39 5.38 4.75.75.32 1.34.52 1.8.66.76.24 1.44.2 1.98.12.61-.09 1.86-.76 2.12-1.5.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.6-.37Z"/>
+      </svg>
+    </a>
+
+    <script src="/storefront.js"></script>
+    <script>
+      const SUPABASE_URL = "https://qdrssnhlbwkufnhgqfwo.supabase.co";
+      const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkcnNzbmhsYndrdWZuaGdxZndvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4OTAyMzAsImV4cCI6MjA5NjQ2NjIzMH0.Y-P94zJJKx4n5L5f-23CoKFaQ3gP1ssvcKv6cn3uP1U";
+      const API = `${SUPABASE_URL}/functions/v1/wallet`;
+      const app = document.querySelector("#app");
+      const params = new URLSearchParams(location.search);
+      const tenantSlug = location.hostname.endsWith(".fideli.site") && location.hostname !== "www.fideli.site"
+        ? location.hostname.slice(0, -".fideli.site".length)
+        : "";
+      let businessId = params.get("business") || "";
+      const referredBy = (params.get("ref") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 80);
+      const selectedCardId = params.get("card") || "";
+      const pwaCustomerId = params.get("customer") || "";
+      const legacyPwaToken = params.get("token") || "";
+      const pwaStartHash = new URLSearchParams(location.hash.replace(/^#/, ""));
+      const installTicketFromUrl = pwaStartHash.get("install") || "";
+      const deviceTokenFromUrl = pwaStartHash.get("device") || "";
+      let walletStatusTimer = 0;
+      let cardSyncBusy = false;
+      let cardSyncQueued = false;
+      let activeCardClub = null;
+      let activeCardPending = null;
+      let activeCardSignature = "";
+      let cardRealtimeClient = null;
+      let cardRealtimeChannel = null;
+      let cardRealtimeReady = false;
+      let cardRealtimeGeneration = 0;
+      let cardRecoveryTimer = 0;
+      let notificationToggleEpoch = 0;
+      let proximityWatchId = null;
+      const proximityInside = new Set();
+      let deferredInstallPrompt = null;
+
+      window.addEventListener("beforeinstallprompt", (event) => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+      });
+
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => navigator.serviceWorker
+          .register("/sw.js", { updateViaCache: "none" })
+          .then((registration) => registration.update())
+          .catch(() => {}));
+        navigator.serviceWorker.addEventListener("message", (event) => {
+          if (event.data?.type === "FIDELI_CARD_UPDATED") refreshActiveCard(true);
+        });
+      }
+
+      window.addEventListener("online", () => refreshActiveCard(true));
+      window.addEventListener("focus", () => refreshActiveCard(true));
+      window.addEventListener("pageshow", () => refreshActiveCard(true));
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) refreshActiveCard(true);
+      });
+
+      function element(tag, text, className) {
+        const node = document.createElement(tag);
+        if (text) node.textContent = text;
+        if (className) node.className = className;
+        return node;
+      }
+
+      function message(title, body) {
+        app.replaceChildren(element("div", "♡", "mark"), element("h1", title), element("p", body));
+      }
+
+      async function loadClub() {
+        let club = null;
+        if (!businessId && tenantSlug) {
+          try {
+            const slugResponse = await fetch(`${API}/api/public/clubs/by-slug/${encodeURIComponent(tenantSlug)}`);
+            if (!slugResponse.ok) throw new Error("Club no encontrado");
+            club = await slugResponse.json();
+            businessId = club.id;
+          } catch (_) {
+            document.querySelector("#public-site").hidden = true;
+            document.querySelector("#enrollment").hidden = false;
+            message("Club no encontrado", "Comprueba el enlace e inténtalo nuevamente.");
+            return;
+          }
+        }
+        if (!businessId) {
+          try {
+            const installedWallet = localStorage.getItem("fideli-installed-wallet") ||
+              localStorage.getItem("fideli-last-wallet");
+            if (isStandalone() && installedWallet) location.replace(installedWallet);
+          } catch (_) {}
+          return;
+        }
+        if (!/^[0-9a-f-]{36}$/i.test(businessId)) {
+          document.querySelector("#public-site").hidden = true;
+          document.querySelector("#enrollment").hidden = false;
+          message("Enlace incompleto", "Pide al comercio que vuelva a compartir su QR de Fideli.");
+          return;
+        }
+        document.querySelector("#public-site").hidden = true;
+        document.querySelector("#enrollment").hidden = false;
+        try {
+          if (!club) {
+            const response = await fetch(`${API}/api/public/clubs/${businessId}`);
+            if (!response.ok) throw new Error("Club no encontrado");
+            club = await response.json();
+          }
+          document.title = club.name;
+          document.querySelector("#apple-mobile-web-app-title").content = club.name;
+          if (club.iconUrl) document.querySelector("#apple-touch-icon").href = club.iconUrl;
+          document.documentElement.style.setProperty("--club-color", "#a9483f");
+          if (!(await resumePendingWallet(club))) renderForm(club);
+        } catch (_) {
+          message("No pudimos abrir el club", "Comprueba tu conexión e inténtalo nuevamente.");
+        }
+      }
+
+      function field(form, labelText, name, options = {}) {
+        const label = element("label", labelText);
+        label.htmlFor = name;
+        const input = document.createElement("input");
+        Object.assign(input, { id: name, name, ...options });
+        form.append(label, input);
+        if (name === "phone" || name === "email") {
+          const error = element("small", "", "field-error");
+          error.id = `${name}-error`;
+          error.hidden = true;
+          form.append(error);
+        }
+      }
+
+      function setFieldError(form, name, text = "") {
+        const input = form.elements[name];
+        const error = form.querySelector(`#${name}-error`);
+        if (!input || !error) return;
+        input.setCustomValidity(text);
+        input.classList.toggle("invalid", Boolean(text));
+        error.textContent = text;
+        error.hidden = !text;
+      }
+
+      function registrationLogo(club, card) {
+        // El formulario representa al comercio, no el encabezado horizontal
+        // diseñado para la tarjeta. Usa exclusivamente el icono cuadrado de
+        // “Mi negocio”.
+        return club.iconUrl || card?.preview?.iconUrl || card?.iconUrl || "";
+      }
+
+      function applyRegistrationIdentity(mark, club, card) {
+        const logoUrl = registrationLogo(club, card);
+        mark.replaceChildren();
+        if (logoUrl) {
+          const logo = document.createElement("img");
+          logo.src = logoUrl;
+          logo.alt = `Logo de ${club.name}`;
+          logo.addEventListener("error", () => mark.replaceChildren(document.createTextNode((club.name || "F").trim().charAt(0).toUpperCase() || "F")), { once: true });
+          mark.append(logo);
+          document.querySelector("#apple-touch-icon").href = logoUrl;
+          const favicon = document.querySelector("#site-favicon");
+          favicon.href = logoUrl;
+          favicon.type = "image/png";
+        } else {
+          mark.textContent = (club.name || "F").trim().charAt(0).toUpperCase() || "F";
+        }
+      }
+
+      function renderForm(club) {
+        const selectedCard = selectedCardId
+          ? (club.cards || []).find((card) => card.id === selectedCardId)
+          : null;
+        if (selectedCardId && !selectedCard) {
+          message(
+            "Tarjeta no disponible",
+            "Pide al comercio que vuelva a compartir el QR.",
+          );
+          return;
+        }
+        const mark = element("div", "", "mark");
+        applyRegistrationIdentity(mark, club, selectedCard);
+        const identity = element("div", "", "enrollment-identity");
+        identity.append(mark, element("div", club.name, "enrollment-business-name"));
+        const form = document.createElement("form");
+        if (selectedCard) {
+          const cardInput = document.createElement("input");
+          Object.assign(cardInput, { type: "hidden", name: "cardId", value: selectedCard.id });
+          form.append(cardInput);
+        } else if (club.cards && club.cards.length) {
+          const cardLabel = element("label", "Tarjeta");
+          cardLabel.htmlFor = "cardId";
+          const select = document.createElement("select");
+          select.id = "cardId";
+          select.name = "cardId";
+          for (const card of club.cards) {
+            const option = document.createElement("option");
+            option.value = card.id;
+            const expiry = card.expires_at ? ` · vence ${new Date(card.expires_at).toLocaleDateString("es")}` : "";
+            option.textContent = `${card.name} · ${card.card_kind}${expiry}`;
+            select.append(option);
+          }
+          select.addEventListener("change", () => {
+            applyRegistrationIdentity(mark, club, club.cards.find((card) => card.id === select.value));
+            checkAvailability();
+          });
+          form.append(cardLabel, select);
+        }
+        field(form, "Nombre completo", "name", { required: true, maxLength: 120, autocomplete: "name" });
+        field(form, "Cumpleaños (opcional)", "birthDate", { type: "date", max: new Date().toISOString().slice(0, 10), autocomplete: "bday" });
+        field(form, "Teléfono", "phone", { type: "tel", required: true, minLength: 7, maxLength: 40, autocomplete: "tel", inputMode: "tel" });
+        field(form, "Correo electrónico", "email", { type: "email", required: true, maxLength: 160, autocomplete: "email" });
+        if (referredBy) {
+          const referralInput = document.createElement("input");
+          Object.assign(referralInput, { type: "hidden", name: "referredBy", value: referredBy });
+          form.append(referralInput);
+          form.append(element("p", `Invitación vinculada al código ${referredBy}`, "fine"));
+        }
+        field(form, "Sitio web", "website", { tabIndex: -1, autocomplete: "off", className: "hidden" });
+        form.lastElementChild.previousElementSibling.className = "hidden";
+        form.elements.website?.setAttribute("aria-hidden", "true");
+        form.elements.website?.previousElementSibling?.setAttribute("aria-hidden", "true");
+        const submit = element("button", "Agregar tarjeta");
+        submit.type = "submit";
+        submit.disabled = true;
+        form.append(submit);
+        // Si esta persona ya agregó otra tarjeta desde este dispositivo,
+        // reutilizamos su identidad segura en vez de crear otro cliente.
+        const registrationDeviceToken = sharedDeviceToken();
+        let availabilityTimer = 0;
+        let availabilitySequence = 0;
+        let availabilityAllowed = false;
+        const availabilityCache = new Map();
+
+        const updateSubmitState = () => {
+          submit.disabled = form.dataset.submitting === "true" ||
+            !availabilityAllowed ||
+            !form.checkValidity();
+        };
+
+        const applyAvailability = (result) => {
+          const categoryLabel = result.category === "membership"
+            ? "membresía"
+            : result.category === "gift"
+            ? "tarjeta de regalo"
+            : result.category === "points"
+            ? "tarjeta de puntos"
+            : "tarjeta de sellos";
+          const duplicateMessage = result.duplicateCard
+            ? "Ya tienes agregada esta tarjeta."
+            : result.duplicateCategory
+            ? `Ya tienes una ${categoryLabel} en este comercio.`
+            : "";
+          setFieldError(form, "phone", result.phoneUsed ? (duplicateMessage || "Este teléfono ya está registrado en otro dispositivo.") : "");
+          setFieldError(form, "email", result.emailUsed ? (duplicateMessage || "Este correo ya está registrado en otro dispositivo.") : "");
+          availabilityAllowed = !result.phoneUsed && !result.emailUsed;
+          form.dataset.availability = availabilityAllowed ? "available" : "blocked";
+          updateSubmitState();
+          return availabilityAllowed;
+        };
+
+        const checkAvailability = async () => {
+          window.clearTimeout(availabilityTimer);
+          const phone = String(form.elements.phone?.value || "").trim();
+          const email = String(form.elements.email?.value || "").trim().toLowerCase();
+          const cardId = String(form.elements.cardId?.value || selectedCardId || "");
+          const validPhone = phone.replace(/\D/g, "").length >= 7;
+          const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+          if (!validPhone || !validEmail || !cardId) {
+            availabilityAllowed = false;
+            form.dataset.availability = "incomplete";
+            updateSubmitState();
+            return false;
+          }
+          const availabilityKey = `${phone.replace(/\D/g, "")}|${email}|${cardId}`;
+          if (availabilityCache.has(availabilityKey)) {
+            return applyAvailability(availabilityCache.get(availabilityKey));
+          }
+          const sequence = ++availabilitySequence;
+          availabilityAllowed = false;
+          form.dataset.availability = "checking";
+          submit.disabled = true;
+          try {
+            const query = new URLSearchParams({
+              phone,
+              email,
+              cardId,
+              deviceToken: registrationDeviceToken,
+            });
+            const response = await fetch(`${API}/api/public/clubs/${businessId}/registration-availability?${query}`, { cache: "no-store" });
+            if (!response.ok || sequence !== availabilitySequence) return false;
+            const result = await response.json();
+            availabilityCache.set(availabilityKey, result);
+            return applyAvailability(result);
+          } catch (_) {
+            if (sequence !== availabilitySequence) return false;
+            // El registro todavía será validado de forma autoritativa por el
+            // servidor. Un fallo temporal de esta comprobación no debe dejar
+            // el formulario bloqueado para siempre.
+            availabilityAllowed = true;
+            form.dataset.availability = "unavailable";
+            updateSubmitState();
+            return availabilityAllowed;
+          }
+        };
+        for (const name of ["phone", "email"]) {
+          form.elements[name]?.addEventListener("input", () => {
+            availabilitySequence += 1;
+            setFieldError(form, "phone", "");
+            setFieldError(form, "email", "");
+            form.dataset.submitting = "false";
+            availabilityAllowed = false;
+            form.dataset.availability = "pending";
+            submit.disabled = true;
+            window.clearTimeout(availabilityTimer);
+            availabilityTimer = window.setTimeout(checkAvailability, 450);
+          });
+          form.elements[name]?.addEventListener("blur", checkAvailability);
+        }
+        form.elements.name?.addEventListener("input", updateSubmitState);
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          if (form.dataset.submitting === "true") return;
+          submit.disabled = true;
+          const allowed = await checkAvailability();
+          if (!allowed || form.dataset.submitting === "true") return;
+          register(event, form, submit, club, registrationDeviceToken);
+        });
+        const privacy = element("p", "Tus datos se usan únicamente para este club de fidelización.", "fine");
+        app.replaceChildren(identity, form, privacy);
+      }
+
+      function pendingWalletKey(cardId = selectedCardId) {
+        return `fideli-wallet-${businessId}-${cardId || "default"}`;
+      }
+
+      function sharedDeviceTokenKey() {
+        return `fideli-device-${businessId}`;
+      }
+
+      function sharedDeviceCookieName() {
+        return `fideli_device_${businessId}`;
+      }
+
+      function cookieDeviceToken() {
+        const prefix = `${sharedDeviceCookieName()}=`;
+        const match = document.cookie
+          .split(";")
+          .map((item) => item.trim())
+          .find((item) => item.startsWith(prefix));
+        if (!match) return "";
+        try {
+          return decodeURIComponent(match.slice(prefix.length));
+        } catch (_) {
+          return "";
+        }
+      }
+
+      function persistSharedDeviceToken(token) {
+        if (!token || token.length < 32) return "";
+        localStorage.setItem(sharedDeviceTokenKey(), token);
+        const domain = location.hostname === "fideli.site" || location.hostname.endsWith(".fideli.site")
+          ? "; Domain=.fideli.site"
+          : "";
+        document.cookie = `${sharedDeviceCookieName()}=${encodeURIComponent(token)}; Max-Age=31536000; Path=/${domain}; Secure; SameSite=Lax`;
+        return token;
+      }
+
+      function existingSharedDeviceToken() {
+        if (deviceTokenFromUrl && deviceTokenFromUrl.length >= 32) {
+          return persistSharedDeviceToken(deviceTokenFromUrl);
+        }
+        const cookieToken = cookieDeviceToken();
+        if (cookieToken && cookieToken.length >= 32) {
+          return persistSharedDeviceToken(cookieToken);
+        }
+        const saved = localStorage.getItem(sharedDeviceTokenKey());
+        if (saved && saved.length >= 32) return persistSharedDeviceToken(saved);
+        const prefix = `fideli-wallet-${businessId}`;
+        for (let index = 0; index < localStorage.length; index += 1) {
+          const key = localStorage.key(index) || "";
+          if (!key.startsWith(prefix)) continue;
+          try {
+            const deviceToken = JSON.parse(localStorage.getItem(key) || "null")?.deviceToken;
+            if (deviceToken && deviceToken.length >= 32) {
+              return persistSharedDeviceToken(deviceToken);
+            }
+          } catch (_) {}
+        }
+        return "";
+      }
+
+      function sharedDeviceToken() {
+        const existing = existingSharedDeviceToken();
+        if (existing) return existing;
+        const created = randomDeviceToken();
+        return persistSharedDeviceToken(created);
+      }
+
+      function readPendingWallet() {
+        const parseWallet = (value) => {
+          try { return JSON.parse(value || "null"); } catch (_) { return null; }
+        };
+        const exact = parseWallet(localStorage.getItem(pendingWalletKey()));
+        if (exact) return exact;
+        const legacy = parseWallet(localStorage.getItem(`fideli-wallet-${businessId}`));
+        if (legacy && (!selectedCardId || legacy.cardId === selectedCardId)) return legacy;
+
+        // Card links have changed shape over time. If the exact key no longer
+        // matches, recover the newest wallet for this customer instead of
+        // treating a valid installed PWA as belonging to another device.
+        const prefix = `fideli-wallet-${businessId}-`;
+        const candidates = [];
+        for (let index = 0; index < localStorage.length; index += 1) {
+          const key = localStorage.key(index) || "";
+          if (!key.startsWith(prefix)) continue;
+          const wallet = parseWallet(localStorage.getItem(key));
+          if (!wallet?.customerId) continue;
+          if (pwaCustomerId && wallet.customerId !== pwaCustomerId) continue;
+          if (selectedCardId) {
+            const ownsSelectedCard = wallet.cardId === selectedCardId ||
+              wallet.card?.id === selectedCardId ||
+              (wallet.cards || []).some((item) =>
+                (item.cardId || item.card?.id) === selectedCardId
+              );
+            if (!ownsSelectedCard) continue;
+          }
+          candidates.push(wallet);
+        }
+        return candidates.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0] || null;
+      }
+
+      function randomDeviceToken() {
+        const bytes = crypto.getRandomValues(new Uint8Array(32));
+        return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      }
+
+      async function claimPendingWallet(pending) {
+        if (!pending.deviceToken) pending.deviceToken = deviceTokenFromUrl || sharedDeviceToken();
+        persistSharedDeviceToken(pending.deviceToken);
+        const response = await fetch(`${API}/api/public/pwa/claim`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            businessId,
+            customerId: pending.customerId,
+            cardId: pending.cardId || selectedCardId,
+            deviceToken: pending.deviceToken,
+            claimToken: pending.pwaClaimToken || pending.installTicket || installTicketFromUrl || "",
+            legacyToken: pending.pwaToken || legacyPwaToken || "",
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || "No se pudo activar esta tarjeta");
+        pending.realtimeTopic = result.realtimeTopic || pending.realtimeTopic;
+        delete pending.pwaClaimToken;
+        delete pending.installTicket;
+        delete pending.pwaToken;
+        return pending;
+      }
+
+      async function ensureInstallTicket(pending) {
+        if (isStandalone() || !pending.deviceToken) return pending;
+        if (pending.installTicket && Number(pending.installTicketCreatedAt || 0) > Date.now() - 12 * 60 * 1000) {
+          configurePwaIdentity(activeCardClub || pending.business || {}, pending);
+          return pending;
+        }
+        const response = await fetch(`${API}/api/public/pwa/install-ticket`, {
+          method: "POST",
+          headers: deviceHeaders(pending, { "content-type": "application/json" }),
+          body: JSON.stringify({
+            businessId,
+            customerId: pending.customerId,
+            cardId: pending.cardId || selectedCardId,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || "No se pudo preparar la instalación");
+        pending.installTicket = result.installTicket;
+        pending.installTicketCreatedAt = Date.now();
+        localStorage.setItem(pendingWalletKey(pending.cardId), JSON.stringify(pending));
+        configurePwaIdentity(activeCardClub || pending.business || {}, pending);
+        return pending;
+      }
+
+      function deviceHeaders(pending, extras = {}) {
+        return { ...extras, "x-fideli-device-token": pending.deviceToken || "" };
+      }
+
+      async function resumePendingWallet(club) {
+        let pending = readPendingWallet();
+        let renderedCachedCard = false;
+        if (pending && !pending.deviceToken && deviceTokenFromUrl.length >= 32) {
+          pending.deviceToken = deviceTokenFromUrl;
+        }
+        if (pending?.deviceToken) persistSharedDeviceToken(pending.deviceToken);
+        const recoverableDeviceToken = existingSharedDeviceToken();
+        if (!pending && pwaCustomerId && (recoverableDeviceToken || (isStandalone() && installTicketFromUrl))) {
+          pending = {
+            customerId: pwaCustomerId,
+            cardId: selectedCardId,
+            installTicket: installTicketFromUrl,
+            deviceToken: recoverableDeviceToken || sharedDeviceToken(),
+          };
+        }
+        if (!pending && pwaCustomerId && legacyPwaToken) {
+          pending = { customerId: pwaCustomerId, cardId: selectedCardId, pwaToken: legacyPwaToken };
+        }
+        if (!pending) {
+          if (pwaCustomerId) {
+            message("Tarjeta protegida", "Este enlace pertenece a otro dispositivo.");
+            return true;
+          }
+          return false;
+        }
+        if (pwaCustomerId && pending.customerId !== pwaCustomerId) {
+          message("Tarjeta protegida", "No puedes abrir la tarjeta de otra persona desde este dispositivo.");
+          return true;
+        }
+        // Show a locally saved card before any activation or network request.
+        // A temporary connection problem must never replace an owned card with
+        // the misleading “Tarjeta protegida” state.
+        if (isStandalone() && pending.card?.id && pending.customerId) {
+          renderCardHub(club, pending);
+          renderedCachedCard = true;
+        }
+        try {
+          if (
+            !pending.deviceToken || pending.pwaClaimToken || pending.pwaToken || legacyPwaToken ||
+            (isStandalone() && (pending.installTicket || installTicketFromUrl))
+          ) {
+            pending = await claimPendingWallet(pending);
+          }
+          const query = new URLSearchParams({ card: pending.cardId || selectedCardId });
+          const controller = new AbortController();
+          const timeout = window.setTimeout(() => controller.abort(), 7500);
+          const response = await fetch(`${API}/api/public/pwa/cards/${businessId}/${encodeURIComponent(pending.customerId)}?${query}`, {
+            cache: "no-store",
+            headers: deviceHeaders(pending),
+            signal: controller.signal,
+          });
+          window.clearTimeout(timeout);
+          if (!response.ok) throw new Error("No se pudo abrir esta tarjeta");
+          pending = { ...pending, ...(await response.json()) };
+        } catch (error) {
+          if (renderedCachedCard) {
+            scheduleRecoverySync(5000);
+            return true;
+          }
+          message("Tarjeta protegida", error.message || "Esta tarjeta solo puede abrirse desde su dispositivo original.");
+          return true;
+        }
+        localStorage.setItem(pendingWalletKey(pending.cardId), JSON.stringify(pending));
+        const cleanUrl = new URL(location.origin + location.pathname);
+        cleanUrl.searchParams.set("business", businessId);
+        cleanUrl.searchParams.set("card", pending.cardId || selectedCardId || "");
+        cleanUrl.searchParams.set("customer", pending.customerId);
+        // Keep the authenticated device token in local storage and in the
+        // install manifest start URL, never in the visible/shareable address.
+        // Native iOS/Android sharing uses this address; without the token the
+        // recipient reaches the protected-card screen while the installed PWA
+        // continues to restore its own wallet from local storage.
+        history.replaceState(null, "", cleanUrl.toString());
+        renderCardHub(club, pending);
+        return true;
+      }
+
+      function cardValue(card, key, fallback = "") {
+        return card && card[key] !== undefined && card[key] !== null ? card[key] : fallback;
+      }
+
+      function cardSyncSignature(pending) {
+        const card = pending.card || {};
+        return JSON.stringify({
+          deleted: Boolean(pending.deleted),
+          card: {
+            id: card.id || "",
+            name: card.name || "",
+            cardKind: card.cardKind || "",
+            programType: card.programType || "",
+            goal: Number(card.goal || 0),
+            balance: Number(card.balance || 0),
+            visits: Number(card.visits || 0),
+            colorHex: card.colorHex || "",
+            stampIcon: card.stampIcon || "",
+            walletLayout: card.walletLayout || "",
+            expiresAt: card.expiresAt || "",
+            active: card.active !== false,
+            expired: Boolean(card.expired),
+            expirationNotice: card.expirationNotice || "",
+            logoUrl: card.logoUrl || "",
+            iconUrl: card.iconUrl || "",
+            backgroundUrl: card.backgroundUrl || "",
+          },
+          customerName: pending.customer?.name || "",
+          customerCode: pending.customer?.code || "",
+          qrDataUrl: pending.qrDataUrl || "",
+          cards: (pending.cards || []).map((item) => ({
+            id: item.card?.id || item.cardId || "",
+            balance: Number(item.card?.balance || 0),
+            visits: Number(item.card?.visits || 0),
+            active: item.card?.active !== false,
+            expired: Boolean(item.card?.expired),
+          })),
+        });
+      }
+
+      function cardDisplayKind(card) {
+        if (card.cardKind === "Tarjeta de regalo") return "gift";
+        if (card.programType === "membership") return "membership";
+        if (card.programType === "points") return "points";
+        return "stamps";
+      }
+
+      function setImageWhenReady(image, url) {
+        if (!image || !url || image.getAttribute("src") === url) return;
+        const preload = new Image();
+        preload.onload = () => { if (image.isConnected) image.src = url; };
+        preload.src = url;
+      }
+
+      function updateStampGrid(grid, card) {
+        const goal = Math.min(15, Math.max(1, Number(card.goal || 1)));
+        const balance = Number(card.balance || 0);
+        const stampUrl = `${API}/assets/stamps/${card.stampIcon || "coffee"}.png`;
+        const columns = goal <= 8 ? 4 : 5;
+        grid.style.setProperty("--stamp-columns", String(columns));
+        grid.style.setProperty("--stamp-rows", String(Math.ceil(goal / columns)));
+        while (grid.children.length < goal) {
+          const stamp = document.createElement("img");
+          stamp.className = "stamp-image";
+          stamp.alt = "";
+          stamp.src = stampUrl;
+          grid.append(stamp);
+        }
+        while (grid.children.length > goal) grid.lastElementChild.remove();
+        const sourceChanged = [...grid.children].some((stamp) => stamp.getAttribute("src") !== stampUrl);
+        const apply = () => {
+          [...grid.children].forEach((stamp, index) => {
+            if (sourceChanged) stamp.src = stampUrl;
+            stamp.classList.toggle("active", index < balance);
+          });
+        };
+        if (sourceChanged) {
+          const preload = new Image();
+          preload.onload = apply;
+          preload.onerror = apply;
+          preload.src = stampUrl;
+        } else apply();
+      }
+
+      function updateCardHubInPlace(club, previous, next) {
+        const pass = document.querySelector(".customer-pass");
+        if (!pass || Boolean(previous.deleted) !== Boolean(next.deleted)) return false;
+        const oldCard = previous.card || {};
+        const card = next.card || {};
+        if (cardDisplayKind(oldCard) !== cardDisplayKind(card)) return false;
+        if (Boolean(oldCard.expired) !== Boolean(card.expired) ||
+            (oldCard.active !== false) !== (card.active !== false) ||
+            Boolean(previous.qrDataUrl) !== Boolean(next.qrDataUrl)) return false;
+        pass.classList.toggle("classic", card.walletLayout === "classic");
+        pass.classList.toggle("has-background", Boolean(card.backgroundUrl && card.walletLayout !== "classic"));
+        pass.style.setProperty("--pass-color", card.colorHex || club.colorHex || "#6750a4");
+        const backgroundUrl = card.backgroundUrl || "";
+        if (pass.dataset.backgroundUrl !== backgroundUrl) {
+          if (!backgroundUrl) {
+            pass.style.removeProperty("--pass-background");
+            pass.dataset.backgroundUrl = "";
+          } else {
+            const preload = new Image();
+            preload.onload = () => {
+              if (!pass.isConnected) return;
+              pass.style.setProperty("--pass-background", `url(${JSON.stringify(backgroundUrl)})`);
+              pass.dataset.backgroundUrl = backgroundUrl;
+            };
+            preload.src = backgroundUrl;
+          }
+        }
+        setImageWhenReady(pass.querySelector(".pass-logo"), card.logoUrl || club.logoUrl || `${API}/assets/pwa/logo/${businessId}.png`);
+        const totalLabel = pass.querySelector(".pass-total small");
+        const totalValue = pass.querySelector(".pass-total strong");
+        const kind = cardDisplayKind(card);
+        if (totalLabel && totalValue) {
+          totalLabel.textContent = kind === "points" ? "Puntos" : "Sellos";
+          totalValue.textContent = kind === "points" ? String(card.balance || 0) : `${card.balance || 0}/${card.goal || 1}`;
+        }
+        if (kind === "stamps") {
+          const grid = pass.querySelector(".stamp-grid");
+          if (!grid) return false;
+          updateStampGrid(grid, card);
+          const metaValues = pass.querySelectorAll(".pass-meta .pass-value");
+          const customerName = metaValues[0];
+          if (customerName) customerName.textContent = next.customer?.name || "Cliente";
+          if (metaValues[1]) metaValues[1].textContent = String(card.visits || 0);
+        } else {
+          const values = pass.querySelectorAll(".pass-content .pass-value");
+          if (kind === "gift") {
+            const rawBalance = Number(card.balance || 0);
+            const walletBalance = Number.isInteger(rawBalance) ? String(rawBalance) : rawBalance.toFixed(2);
+            if (values[0]) values[0].textContent = `🎁  Bs ${walletBalance}`;
+            if (values[1]) values[1].textContent = formatDateTime(card.expiresAt) || "Sin vencimiento";
+          }
+          if (kind === "membership") {
+            if (values[0]) values[0].textContent = card.active === false ? "INACTIVA" : "ACTIVA";
+            if (values[1]) values[1].textContent = formatDateTime(card.expiresAt) || "Sin vencimiento";
+          }
+          if (kind === "points" && values[0]) values[0].textContent = String(card.balance || 0);
+        }
+        const qr = pass.querySelector(".pass-qr img");
+        if (qr && next.qrDataUrl) setImageWhenReady(qr, next.qrDataUrl);
+        const qrCode = pass.querySelector(".pass-code-value");
+        if (qrCode) qrCode.textContent = next.customer?.code || "";
+        configurePwaIdentity(club, next);
+        return true;
+      }
+
+      function cardRealtimeTopic(pending) {
+        return String(pending?.realtimeTopic || "");
+      }
+
+      function scheduleRecoverySync(delay = 60000) {
+        window.clearTimeout(cardRecoveryTimer);
+        if (!activeCardPending || cardRealtimeReady) return;
+        cardRecoveryTimer = window.setTimeout(async () => {
+          await refreshActiveCard(true);
+          scheduleRecoverySync(60000);
+        }, delay);
+      }
+
+      async function connectCardRealtime(pending) {
+        const generation = ++cardRealtimeGeneration;
+        cardRealtimeReady = false;
+        window.clearTimeout(cardRecoveryTimer);
+        if (cardRealtimeChannel && cardRealtimeClient) {
+          await cardRealtimeClient.removeChannel(cardRealtimeChannel).catch(() => {});
+        }
+        cardRealtimeChannel = null;
+        if (!window.supabase?.createClient || !pending?.customerId || !pending?.realtimeTopic) {
+          scheduleRecoverySync();
+          return;
+        }
+        cardRealtimeClient ||= window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+          realtime: { params: { eventsPerSecond: 2 } },
+        });
+        const channel = cardRealtimeClient
+          .channel(cardRealtimeTopic(pending), { config: { broadcast: { self: false, ack: false } } })
+          .on("broadcast", { event: "card_updated" }, () => refreshActiveCard(true));
+        cardRealtimeChannel = channel;
+        channel.subscribe((status) => {
+          if (generation !== cardRealtimeGeneration) return;
+          cardRealtimeReady = status === "SUBSCRIBED";
+          if (cardRealtimeReady) {
+            window.clearTimeout(cardRecoveryTimer);
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            scheduleRecoverySync();
+          }
+        });
+      }
+
+      function startCardSync(club, pending) {
+        activeCardClub = club;
+        activeCardPending = pending;
+        activeCardSignature = cardSyncSignature(pending);
+        if (cardSyncBusy) cardSyncQueued = true;
+        connectCardRealtime(pending);
+      }
+
+      function synchronizeCardCollection(previous, next) {
+        const currentCollection = Array.isArray(previous?.cards) ? previous.cards : null;
+        const freshCollection = Array.isArray(next?.cards) ? next.cards : null;
+        if (!currentCollection || !freshCollection) return;
+        const existingById = new Map(currentCollection.map((item) => [
+          item.card?.id || item.cardId || "",
+          item,
+        ]));
+        const synchronized = freshCollection.map((fresh) => {
+          const id = fresh.card?.id || fresh.cardId || "";
+          const existing = existingById.get(id);
+          if (!existing) return fresh;
+          const card = { ...(existing.card || {}), ...(fresh.card || {}) };
+          Object.assign(existing, fresh, { card });
+          return existing;
+        });
+        // The swipe handlers keep a reference to this exact array. Mutating it
+        // in place makes every subsequent card use the newest balances.
+        currentCollection.splice(0, currentCollection.length, ...synchronized);
+        next.cards = currentCollection;
+        const activeId = next.cardId || next.card?.id || "";
+        const activeEntry = currentCollection.find((item) =>
+          (item.card?.id || item.cardId || "") === activeId
+        );
+        if (activeEntry) {
+          next.card = activeEntry.card;
+          next.qrDataUrl = activeEntry.qrDataUrl;
+          next.personalSharingAllowed = activeEntry.personalSharingAllowed;
+          next.appleWalletUrl = activeEntry.appleWalletUrl;
+          next.googleWalletUrl = activeEntry.googleWalletUrl;
+          next.realtimeTopic = activeEntry.realtimeTopic;
+        }
+      }
+
+      async function refreshActiveCard(immediate = false) {
+        if (!activeCardClub || !activeCardPending) return;
+        if (cardSyncBusy) {
+          if (immediate) cardSyncQueued = true;
+          return;
+        }
+        if (document.hidden && !immediate) return;
+        cardSyncBusy = true;
+        const pending = activeCardPending;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 7500);
+        try {
+          const query = new URLSearchParams({ card: pending.cardId || selectedCardId, live: String(Date.now()) });
+          const response = await fetch(
+            `${API}/api/public/pwa/cards/${businessId}/${encodeURIComponent(pending.customerId)}?${query}`,
+            { cache: "no-store", signal: controller.signal, headers: deviceHeaders(pending) },
+          );
+          let next = pending;
+          if (response.ok) {
+            next = { ...pending, ...(await response.json()) };
+          } else if (response.status === 404 || response.status === 410) {
+            next = { ...pending, deleted: true };
+          } else if (response.status === 401 || response.status === 403) {
+            return;
+          } else {
+            throw new Error("No se pudo sincronizar");
+          }
+          // The user may swipe to another card while this request is in
+          // flight. Never let a late response from the previous card replace
+          // the newly selected card or its balance.
+          const currentCardId = activeCardPending?.cardId || activeCardPending?.card?.id || "";
+          const requestedCardId = pending.cardId || pending.card?.id || "";
+          if (currentCardId !== requestedCardId) return;
+          const signature = cardSyncSignature(next);
+          const previous = activeCardPending;
+          const previousIds = new Set((previous.cards || []).map((item) => item.card?.id || item.cardId));
+          const addedCard = (next.cards || []).find((item) => {
+            const id = item.card?.id || item.cardId;
+            return id && !previousIds.has(id);
+          });
+          const collectionChanged = (previous.cards || []).length !== (next.cards || []).length;
+          synchronizeCardCollection(previous, next);
+          activeCardPending = next;
+          if (signature !== activeCardSignature) {
+            activeCardSignature = signature;
+            localStorage.setItem(pendingWalletKey(next.cardId), JSON.stringify(next));
+            if (collectionChanged || !updateCardHubInPlace(activeCardClub, previous, next)) {
+              renderCardHub(activeCardClub, next, true);
+            }
+            if (addedCard) {
+              showToast(`${addedCard.card?.name || "Nueva tarjeta"} agregada`);
+            }
+          }
+        } catch (_) {
+          if (!cardRealtimeReady) scheduleRecoverySync();
+        } finally {
+          window.clearTimeout(timeout);
+          cardSyncBusy = false;
+          if (cardSyncQueued) {
+            cardSyncQueued = false;
+            queueMicrotask(() => refreshActiveCard(true));
+          }
+        }
+      }
+
+      function renderCardHub(club, pending, fromSync = false) {
+        window.clearTimeout(walletStatusTimer);
+        document.body.classList.add("card-hub-mode");
+        // En el navegador mostramos solamente la tarjeta que se acaba de crear.
+        // La coleccion del mismo dispositivo se habilita unicamente en la PWA
+        // instalada, evitando exponer otros pases desde un enlace/formulario.
+        const collection = isStandalone() && Array.isArray(pending.cards) && pending.cards.length
+          ? pending.cards
+          : [{
+              cardId: pending.cardId || pending.card?.id,
+              card: pending.card,
+              qrDataUrl: pending.qrDataUrl,
+              personalSharingAllowed: pending.personalSharingAllowed,
+              appleWalletUrl: pending.appleWalletUrl,
+              googleWalletUrl: pending.googleWalletUrl,
+              realtimeTopic: pending.realtimeTopic,
+            }];
+        const card = pending.card;
+        const customer = pending.customer || { name: "Cliente" };
+        const wrapper = element("div", "", "customer-card-hub");
+        const pass = element("section", "", `customer-pass ${card.walletLayout === "classic" ? "classic" : ""} ${card.backgroundUrl && card.walletLayout !== "classic" ? "has-background" : ""} ${card.cardKind === "Tarjeta de regalo" ? "gift-card" : ""} ${card.expired ? "expired" : ""} ${pending._slideDirection === "left" ? "pass-slide-left" : pending._slideDirection === "right" ? "pass-slide-right" : ""}`);
+        pass.setAttribute("aria-label", `${card.name || "Tarjeta"}. Desliza horizontalmente para ver tus otras tarjetas.`);
+        pass.style.setProperty("--pass-color", card.colorHex || club.colorHex || "#6750a4");
+        if (card.backgroundUrl) {
+          pass.style.setProperty("--pass-background", `url(${JSON.stringify(card.backgroundUrl)})`);
+          pass.dataset.backgroundUrl = card.backgroundUrl;
+        }
+        const header = element("div", "", "pass-header");
+        const business = element("div", "", "pass-business");
+        const logo = document.createElement("img");
+        logo.className = "pass-logo";
+        logo.src = card.logoUrl || club.logoUrl || `${API}/assets/pwa/logo/${businessId}.png`;
+        logo.alt = club.name;
+        logo.addEventListener("error", () => logo.replaceWith(element("span", club.name, "pass-business-name")));
+        business.append(logo);
+        const isGift = card.cardKind === "Tarjeta de regalo";
+        const isMembership = card.programType === "membership";
+        const usesPoints = card.programType === "points" && !isGift;
+        const visibleQr = pending.personalSharingAllowed || isStandalone() ? pending.qrDataUrl : "";
+        if (!isGift && !isMembership) {
+          const total = element("div", "", "pass-total");
+          total.append(element("small", usesPoints ? "Puntos" : "Sellos"), element("strong", usesPoints ? String(card.balance || 0) : `${card.balance || 0}/${card.goal || 1}`));
+          header.append(business, total);
+        } else header.append(business);
+        const artwork = element("div", "", "pass-artwork");
+        if (!isGift && !isMembership && !usesPoints) {
+          const grid = element("div", "", "stamp-grid");
+          updateStampGrid(grid, card);
+          const strip = element("div", "", "pass-strip");
+          strip.append(grid);
+          artwork.append(
+            strip,
+            passMeta("Cliente", customer.name || "Cliente", String(card.visits || 0), "Visitas"),
+            element("div", "", "pass-spacer"),
+            qrPreview(visibleQr, customer.code),
+          );
+        } else {
+          const content = element("div", "", "pass-content");
+          if (isGift) {
+            const rawBalance = Number(card.balance || 0);
+            const walletBalance = Number.isInteger(rawBalance)
+              ? String(rawBalance)
+              : rawBalance.toFixed(2);
+            content.append(passText("SALDO", `🎁  Bs ${walletBalance}`));
+            if (card.expiresAt) content.append(passText("Vencimiento", formatDateTime(card.expiresAt)));
+          }
+          else if (isMembership) {
+            content.append(passText("Membresía", card.active === false ? "INACTIVA" : "ACTIVA", true));
+            content.append(passText("Vencimiento", formatDateTime(card.expiresAt) || "Sin vencimiento"));
+          } else {
+            content.append(passText("Puntos", String(card.balance || 0), true));
+          }
+          content.append(qrPreview(visibleQr, customer.code));
+          if (card.walletLayout === "classic" && card.backgroundUrl) {
+            artwork.append(element("div", "", "pass-nonstamp-strip"));
+          }
+          artwork.append(content);
+        }
+        pass.append(header, artwork);
+
+        const currentIndex = Math.max(0, collection.findIndex((item) =>
+          (item.card?.id || item.cardId) === (card.id || pending.cardId)
+        ));
+        const openCollectionCard = (nextIndex, direction) => {
+          if (nextIndex < 0 || nextIndex >= collection.length || nextIndex === currentIndex) return;
+          const entry = collection[nextIndex];
+          const next = {
+            ...pending,
+            ...entry,
+            cards: collection,
+            cardId: entry.card?.id || entry.cardId,
+            _slideDirection: direction,
+          };
+          activeCardPending = next;
+          localStorage.setItem(pendingWalletKey(next.cardId), JSON.stringify(next));
+          const cleanUrl = new URL(location.href);
+          cleanUrl.searchParams.set("card", next.cardId || "");
+          // Card navigation changes only the card selector; never restore
+          // device credentials to the address that native sharing can expose.
+          history.replaceState(null, "", cleanUrl.toString());
+          renderCardHub(club, next, true);
+        };
+        let pointerStartX = null;
+        pass.addEventListener("pointerdown", (event) => { pointerStartX = event.clientX; });
+        pass.addEventListener("pointerup", (event) => {
+          if (pointerStartX === null) return;
+          const distance = event.clientX - pointerStartX;
+          pointerStartX = null;
+          if (distance < -42) openCollectionCard(currentIndex + 1, "left");
+          if (distance > 42) openCollectionCard(currentIndex - 1, "right");
+        });
+
+        const dots = element("div", "", "card-carousel-dots");
+        dots.setAttribute("aria-label", "Tus tarjetas");
+        collection.forEach((item, index) => {
+          const dot = element("button", "", `card-carousel-dot${index === currentIndex ? " active" : ""}`);
+          dot.type = "button";
+          dot.setAttribute("aria-label", `Ver ${item.card?.name || `tarjeta ${index + 1}`}`);
+          dot.addEventListener("click", () => openCollectionCard(index, index > currentIndex ? "left" : "right"));
+          dots.append(dot);
+        });
+        const carouselLabel = element(
+          "div",
+          collection.length > 1 ? `${currentIndex + 1} de ${collection.length} · desliza para cambiar` : "",
+          "card-carousel-label",
+        );
+
+        const actions = element("div", "", "wallet-actions");
+        if (pending.deleted) {
+          actions.append(element("div", "Tarjeta eliminada", "notification-toggle-row"));
+        } else if (card.expired || card.active === false) {
+          actions.append(element("div", card.expired ? "Tarjeta vencida" : "Tarjeta inactiva", "notification-toggle-row"));
+        } else {
+          actions.append(
+            walletButton("  Agregar a Apple Wallet", pending.appleWalletUrl, "apple-wallet", () => pollWalletInstallation(club, pending, 0)),
+            walletButton("G  Agregar a Google Wallet", pending.googleWalletUrl, "google-wallet"),
+          );
+          if (isStandalone()) {
+            actions.append(notificationToggle(pending));
+          } else {
+            const install = element("button", "Agregar a inicio", "home-screen");
+            install.type = "button";
+            install.addEventListener("click", () => installPwa(pending));
+            actions.append(install);
+          }
+        }
+        wrapper.append(pass);
+        if (collection.length > 1) wrapper.append(dots, carouselLabel);
+        wrapper.append(actions);
+        app.replaceChildren(wrapper);
+        configurePwaIdentity(club, pending);
+        if (!isStandalone()) ensureInstallTicket(pending).catch(() => {});
+        startProximity(pending);
+        startCardSync(club, pending);
+        if (!fromSync && isStandalone() && !pending.deleted) window.setTimeout(() => maybeOfferNotifications(pending), 450);
+      }
+
+      function passText(label, value, large = false) {
+        const node = element("div");
+        node.append(element("span", label, "pass-label"), element("div", value, `pass-value${large ? " large" : ""}`));
+        return node;
+      }
+
+      function passMeta(label, value, rightValue = "", rightLabel = "Código") {
+        const meta = element("div", "", "pass-meta");
+        meta.append(passText(label, value));
+        if (rightValue) {
+          const codeBlock = passText(rightLabel, rightValue);
+          codeBlock.querySelector(".pass-value")?.classList.add(
+            rightLabel === "Código" ? "pass-code-value" : "pass-visits-value",
+          );
+          meta.append(codeBlock);
+        }
+        return meta;
+      }
+
+      function qrPreview(url, code = "") {
+        const node = element("div", "", "pass-qr");
+        if (!url) {
+          node.classList.add("empty");
+          return node;
+        }
+        const image = document.createElement("img");
+        image.src = url;
+        image.alt = "Código QR del cliente";
+        node.append(image);
+        if (code) {
+          const caption = element("span", code, "pass-qr-code pass-code-value");
+          node.append(caption);
+        }
+        return node;
+      }
+      function formatDate(value) { return value ? new Date(value).toLocaleDateString("es") : ""; }
+      function formatDateTime(value) {
+        return value
+          ? new Date(value).toLocaleString("es", { dateStyle: "medium", timeStyle: "short" })
+          : "";
+      }
+      function isStandalone() { return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; }
+
+      function walletButton(label, url, className, afterOpen) {
+        // A native link lets iOS hand the pkpass to Wallet during the very
+        // first trusted tap. Programmatic location.assign after mutating a
+        // button can lose that activation and appear to require a second tap.
+        const link = element("a", label, `${className} button`);
+        link.href = url || "#";
+        if (!url) link.setAttribute("aria-disabled", "true");
+        link.addEventListener("click", (event) => {
+          if (!url || link.dataset.opening === "true") {
+            event.preventDefault();
+            return;
+          }
+          const destination = new URL(url);
+          if (className === "apple-wallet") destination.searchParams.set("open", String(Date.now()));
+          link.href = destination.toString();
+          link.dataset.opening = "true";
+          link.setAttribute("aria-disabled", "true");
+          link.textContent = className === "google-wallet"
+            ? "Abriendo Google Wallet…"
+            : "Abriendo Apple Wallet…";
+          // Do not interfere with the native navigation generated by this tap.
+          if (afterOpen) window.setTimeout(afterOpen, 0);
+        });
+        return link;
+      }
+
+      function configurePwaIdentity(club, pending) {
+        const logo = pending.card?.iconUrl || club.iconUrl || pending.card?.logoUrl || club.logoUrl;
+        if (logo) document.querySelector("#apple-touch-icon").href = logo;
+        const start = new URL(location.origin + location.pathname);
+        start.searchParams.set("business", businessId);
+        start.searchParams.set("card", pending.cardId || pending.card?.id || "");
+        start.searchParams.set("customer", pending.customerId);
+        const startIdentity = new URLSearchParams();
+        if (pending.deviceToken) startIdentity.set("device", pending.deviceToken);
+        if (pending.installTicket && !isStandalone()) startIdentity.set("install", pending.installTicket);
+        if (startIdentity.toString()) start.hash = startIdentity.toString();
+        if (!isStandalone()) {
+          // Keep the durable device credential out of the normal browser URL.
+          // It is embedded only in the install start URL and, on iOS, while
+          // the user is explicitly adding the card to the home screen.
+          const visibleStart = new URL(start);
+          visibleStart.hash = pending.installTicket
+            ? new URLSearchParams({ install: pending.installTicket }).toString()
+            : "";
+          history.replaceState(null, "", visibleStart.toString());
+        }
+        pending.installUrl = start.toString();
+        localStorage.setItem(pendingWalletKey(pending.cardId), JSON.stringify(pending));
+        const manifest = new URL(`${API}/api/public/pwa/manifest/${businessId}`);
+        manifest.searchParams.set("start", start.toString());
+        document.querySelector("#pwa-manifest").href = manifest.toString();
+      }
+
+      async function installPwa(pending) {
+        navigator.storage?.persist?.().catch(() => {});
+        try { await ensureInstallTicket(pending); } catch (_) {
+          showInstallSheet("No se pudo preparar", "Actualiza la página e inténtalo nuevamente.");
+          return;
+        }
+        try {
+          const installUrl = pending.installUrl || location.href;
+          localStorage.setItem("fideli-installed-wallet", installUrl);
+          localStorage.removeItem("fideli-last-wallet");
+        } catch (_) {}
+        if (isStandalone()) {
+          await enablePushNotifications(pending);
+          return;
+        }
+        if (deferredInstallPrompt) {
+          await deferredInstallPrompt.prompt();
+          const choice = await deferredInstallPrompt.userChoice;
+          deferredInstallPrompt = null;
+          if (choice.outcome === "accepted") showToast("Agregada a inicio");
+          return;
+        }
+        const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        if (isIos && pending.installUrl) {
+          history.replaceState(null, "", pending.installUrl);
+        }
+        showInstallSheet(
+          isIos ? "Agregar a inicio" : "Instalar tarjeta",
+          isIos
+            ? "Pulsa Compartir y luego “Agregar a pantalla de inicio”. Al abrirla desde ahí podrás activar notificaciones."
+            : "Abre el menú del navegador y elige “Instalar app” o “Agregar a pantalla de inicio”.",
+        );
+      }
+
+      function showInstallSheet(title, copy) {
+        const backdrop = element("div", "", "install-sheet-backdrop");
+        const sheet = element("section", "", "install-sheet");
+        const close = element("button", "Entendido");
+        close.type = "button";
+        close.addEventListener("click", () => backdrop.remove());
+        sheet.append(element("div", "", "install-grabber"), element("h2", title), element("p", copy), close);
+        backdrop.append(sheet);
+        backdrop.addEventListener("click", (event) => { if (event.target === backdrop) backdrop.remove(); });
+        document.body.append(backdrop);
+      }
+
+      function notificationToggle(pending) {
+        const row = element("div", "", "notification-toggle-row");
+        const label = element("span", "Notificaciones");
+        const control = element("label", "", "notification-switch");
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.className = "notification-toggle-input";
+        input.setAttribute("aria-label", "Activar notificaciones");
+        input._fideliPending = pending;
+        input.checked = notificationPreference(pending) === "enabled";
+        control.append(input, element("span"));
+        row.append(label, control);
+        const initialEpoch = notificationToggleEpoch;
+        refreshNotificationToggle(input, pending, initialEpoch);
+        input.addEventListener("change", async () => {
+          const desiredState = input.checked;
+          const actionEpoch = ++notificationToggleEpoch;
+          input.disabled = true;
+          input.setAttribute("aria-busy", "true");
+          const succeeded = desiredState
+            ? await enablePushNotifications(pending)
+            : await disablePushNotifications(pending);
+          if (!input.isConnected || actionEpoch !== notificationToggleEpoch) return;
+          input.checked = succeeded ? desiredState : !desiredState;
+          if (succeeded) setNotificationPreference(pending, desiredState);
+          input.disabled = false;
+          input.removeAttribute("aria-busy");
+        });
+        return row;
+      }
+
+      function notificationPreferenceKey(pending) {
+        return `fideli-notifications-${businessId}-${pending.customerId}`;
+      }
+
+      function notificationPreference(pending) {
+        try { return localStorage.getItem(notificationPreferenceKey(pending)); } catch (_) { return null; }
+      }
+
+      function setNotificationPreference(pending, enabled) {
+        try { localStorage.setItem(notificationPreferenceKey(pending), enabled ? "enabled" : "disabled"); } catch (_) {}
+      }
+
+      async function refreshNotificationToggle(input, pending, expectedEpoch = notificationToggleEpoch) {
+        if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+          input.checked = false;
+          input.disabled = true;
+          return;
+        }
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscribed = Notification.permission === "granted" && Boolean(await registration.pushManager.getSubscription());
+          const enabled = subscribed && notificationPreference(pending) !== "disabled";
+          if (input.isConnected && !input.disabled && expectedEpoch === notificationToggleEpoch) {
+            input.checked = enabled;
+            setNotificationPreference(pending, enabled);
+          }
+        } catch (_) {
+          if (input.isConnected && !input.disabled && expectedEpoch === notificationToggleEpoch) input.checked = false;
+        }
+      }
+
+      async function syncNotificationToggles() {
+        const expectedEpoch = notificationToggleEpoch;
+        await Promise.all(
+          [...document.querySelectorAll(".notification-toggle-input")]
+            .map((input) => refreshNotificationToggle(input, input._fideliPending || activeCardPending, expectedEpoch)),
+        );
+      }
+
+      function notificationPromptKey(pending) {
+        return `fideli-notification-prompt-${businessId}-${pending.customerId}`;
+      }
+
+      function proximityKey(pending) {
+        return `fideli-proximity-${businessId}-${pending.customerId}`;
+      }
+
+      function distanceMeters(a, b) {
+        const radians = (value) => value * Math.PI / 180;
+        const earth = 6371000;
+        const dLat = radians(b.latitude - a.latitude);
+        const dLng = radians(b.longitude - a.longitude);
+        const lat1 = radians(a.latitude);
+        const lat2 = radians(b.latitude);
+        const value = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+        return earth * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+      }
+
+      async function showNearbyNotification(pending, location) {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.showNotification(pending.business?.name || document.title, {
+          body: location.message || `Estás cerca de ${location.name || "una sucursal"}. Presenta tu tarjeta.`,
+          icon: pending.card?.iconUrl || pending.card?.logoUrl,
+          tag: `fideli-nearby-${businessId}-${location.id || location.name}`,
+          data: { url: pending.installUrl || window.location.href },
+        });
+      }
+
+      function startProximity(pending) {
+        if (!navigator.geolocation || proximityWatchId !== null) return;
+        const locations = pending.business?.locations || [];
+        if (!locations.length || Notification.permission !== "granted") return;
+        try { if (localStorage.getItem(proximityKey(pending)) !== "enabled") return; } catch (_) { return; }
+        proximityWatchId = navigator.geolocation.watchPosition((position) => {
+          const current = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+          for (const location of locations) {
+            const id = String(location.id || `${location.latitude},${location.longitude}`);
+            const inside = distanceMeters(current, location) <= Number(location.radiusMeters || 180);
+            if (inside && !proximityInside.has(id)) {
+              proximityInside.add(id);
+              showNearbyNotification(pending, location).catch(() => {});
+            } else if (!inside) {
+              proximityInside.delete(id);
+            }
+          }
+        }, () => {}, { enableHighAccuracy: false, maximumAge: 60000, timeout: 15000 });
+      }
+
+      function stopProximity(pending) {
+        if (proximityWatchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(proximityWatchId);
+        proximityWatchId = null;
+        proximityInside.clear();
+        try { localStorage.removeItem(proximityKey(pending)); } catch (_) {}
+      }
+
+      function maybeOfferNotifications(pending) {
+        if (!("Notification" in window) || Notification.permission !== "default") return;
+        try { if (localStorage.getItem(notificationPromptKey(pending))) return; } catch (_) {}
+        const backdrop = element("div", "", "install-sheet-backdrop");
+        const sheet = element("section", "", "install-sheet");
+        const activate = element("button", "Activar");
+        const later = element("button", "Ahora no", "secondary");
+        activate.type = later.type = "button";
+        activate.addEventListener("click", async () => {
+          activate.disabled = true;
+          if (await enablePushNotifications(pending)) backdrop.remove();
+          else activate.disabled = false;
+        });
+        later.addEventListener("click", () => {
+          try { localStorage.setItem(notificationPromptKey(pending), "later"); } catch (_) {}
+          backdrop.remove();
+        });
+        sheet.append(
+          element("div", "", "install-grabber"),
+          element("h2", "Activa las notificaciones"),
+          element("p", "Recibe tus sellos, puntos y novedades de esta tarjeta."),
+          activate,
+          later,
+        );
+        backdrop.append(sheet);
+        document.body.append(backdrop);
+      }
+
+      async function enablePushNotifications(pending) {
+        if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window) || !pending.webPushPublicKey) {
+          showInstallSheet("Notificaciones", "Las notificaciones estarán disponibles cuando el comercio termine de activar este servicio.");
+          return false;
+        }
+        try {
+          const permission = await Notification.requestPermission();
+          if (permission !== "granted") return false;
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.getSubscription() ||
+            await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: decodeVapidKey(pending.webPushPublicKey),
+            });
+          const response = await fetch(`${API}/api/public/pwa/subscriptions`, {
+            method: "POST",
+            headers: deviceHeaders(pending, { "content-type": "application/json" }),
+            body: JSON.stringify({ businessId, customerId: pending.customerId, cardId: pending.cardId || pending.card?.id, subscription: subscription.toJSON() }),
+          });
+          if (!response.ok) throw new Error();
+          try { localStorage.setItem(notificationPromptKey(pending), "enabled"); } catch (_) {}
+          try { localStorage.setItem(proximityKey(pending), "enabled"); } catch (_) {}
+          setNotificationPreference(pending, true);
+          startProximity(pending);
+          showToast("Notificaciones activadas");
+          return true;
+        } catch (_) {
+          showInstallSheet("No se pudo activar", "Revisa los permisos de notificaciones del navegador e inténtalo nuevamente.");
+          return false;
+        }
+      }
+
+      async function disablePushNotifications(pending) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.getSubscription();
+          if (subscription) {
+            const response = await fetch(`${API}/api/public/pwa/subscriptions`, {
+              method: "DELETE",
+              headers: deviceHeaders(pending, { "content-type": "application/json" }),
+              body: JSON.stringify({
+                businessId,
+                customerId: pending.customerId,
+                cardId: pending.cardId || pending.card?.id,
+                endpoint: subscription.endpoint,
+              }),
+            });
+            if (!response.ok) throw new Error();
+            await subscription.unsubscribe();
+          }
+          try { localStorage.removeItem(notificationPromptKey(pending)); } catch (_) {}
+          setNotificationPreference(pending, false);
+          stopProximity(pending);
+          showToast("Notificaciones desactivadas");
+          return true;
+        } catch (_) {
+          showInstallSheet("No se pudo desactivar", "Revisa los permisos de notificaciones e inténtalo nuevamente.");
+          return false;
+        }
+      }
+
+      function decodeVapidKey(value) {
+        const padding = "=".repeat((4 - value.length % 4) % 4);
+        const raw = atob((value + padding).replace(/-/g, "+").replace(/_/g, "/"));
+        return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
+      }
+
+      function showToast(text) {
+        const toast = element("div", text, "hub-toast");
+        document.body.append(toast);
+        requestAnimationFrame(() => toast.classList.add("visible"));
+        setTimeout(() => { toast.classList.remove("visible"); setTimeout(() => toast.remove(), 500); }, 1900);
+      }
+
+      async function pollWalletInstallation(club, pending, attempt) {
+        if (!readPendingWallet()) return;
+        try {
+          const query = pending.cardId ? `?card=${encodeURIComponent(pending.cardId)}` : "";
+          const response = await fetch(
+            `${API}/api/public/clubs/${businessId}/customers/${encodeURIComponent(pending.customerId)}/wallet-status${query}`,
+            { cache: "no-store" },
+          );
+          const result = await response.json();
+          if (response.ok && result.installed) {
+            showToast(pending.welcomeMessage || "Tarjeta agregada");
+            return;
+          }
+        } catch (_) {}
+        if (attempt < 45) {
+          walletStatusTimer = window.setTimeout(
+            () => pollWalletInstallation(club, pending, attempt + 1),
+            attempt < 8 ? 1200 : 2500,
+          );
+        }
+      }
+
+      async function register(event, form, submit, club, registrationDeviceToken) {
+        event.preventDefault();
+        if (form.dataset.submitting === "true") return;
+        form.dataset.submitting = "true";
+        submit.disabled = true;
+        submit.textContent = "Creando tarjeta…";
+        const values = Object.fromEntries(new FormData(form));
+        for (const control of form.elements) {
+          if (control !== submit) control.disabled = true;
+        }
+        values.deviceToken = registrationDeviceToken;
+        try {
+          const response = await fetch(`${API}/api/public/clubs/${businessId}/register`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(values),
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            if (response.status === 409 && result.fields) {
+              setFieldError(form, "phone", result.fields.phone ? "Este teléfono ya está registrado." : "");
+              setFieldError(form, "email", result.fields.email ? "Este correo ya está registrado." : "");
+              const duplicate = new Error(result.message || "Los datos ya están registrados");
+              duplicate.duplicateFields = true;
+              throw duplicate;
+            }
+            throw new Error(result.message || "No se pudo completar el registro");
+          }
+          const pending = {
+            customerId: result.customerId,
+            cardId: values.cardId || selectedCardId || "",
+            pwaClaimToken: result.pwaClaimToken,
+            installTicket: result.pwaInstallTicket,
+            installTicketCreatedAt: result.pwaInstallTicket ? Date.now() : 0,
+            deviceToken: registrationDeviceToken,
+            realtimeTopic: result.realtimeTopic,
+            appleWalletUrl: result.appleWalletUrl,
+            googleWalletUrl: result.googleWalletUrl,
+            webPushPublicKey: result.webPushPublicKey,
+            business: result.business,
+            customer: result.customer,
+            card: result.card,
+            welcomeMessage: result.welcomeMessage || `¡Bienvenido a ${club.name}!`,
+            createdAt: Date.now(),
+          };
+          localStorage.setItem(pendingWalletKey(pending.cardId), JSON.stringify(pending));
+          persistSharedDeviceToken(registrationDeviceToken);
+          const installUrl = new URL(location.origin + location.pathname);
+          installUrl.searchParams.set("business", businessId);
+          installUrl.searchParams.set("card", pending.cardId);
+          installUrl.searchParams.set("customer", pending.customerId);
+          if (pending.installTicket) {
+            installUrl.hash = new URLSearchParams({ install: pending.installTicket }).toString();
+          }
+          location.replace(installUrl.toString());
+        } catch (error) {
+          // El mismo formulario nunca reenvia automaticamente una solicitud.
+          // Para intentar otra vez, el usuario debe corregir algun dato.
+          for (const control of form.elements) {
+            if (control !== submit) control.disabled = false;
+          }
+          submit.disabled = true;
+          submit.textContent = "Agregar tarjeta";
+          if (!error.duplicateFields) alert(error.message || "No se pudo completar el registro");
+        }
+      }
+
+      const storefrontSlug = tenantSlug && /^\/tienda\/?$/.test(location.pathname) ? tenantSlug : params.get("tienda") || "";
+      if (storefrontSlug) {
+        document.querySelector("#public-site").hidden = true;
+        document.querySelector("#enrollment").hidden = true;
+        const storefrontPage = document.querySelector("#storefront-public");
+        storefrontPage.hidden = false;
+        if (window.startFideliStorefront) {
+          window.startFideliStorefront(storefrontPage, storefrontSlug, {
+            url: SUPABASE_URL,
+            key: SUPABASE_PUBLISHABLE_KEY,
+          });
+        } else {
+          storefrontPage.textContent = "No se pudo abrir esta tienda. Actualiza la página para intentarlo otra vez.";
+        }
+      } else {
+        loadClub();
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,118 @@
+html.storefront-route body { background: #ffffff; color: #171225; }
+html.storefront-route .public-site,
+html.storefront-route .enrollment,
+html.storefront-route .whatsapp-float { display: none !important; }
+.storefront-page[hidden] { display: none !important; }
+.storefront-page { min-height: 100dvh; padding: 22px 16px 120px; }
+.storefront-shell { width: min(100%, 720px); margin: 0 auto; }
+.storefront-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 0 22px; }
+.storefront-brand { color: var(--store-accent, #171225); font-size: .82rem; font-weight: 850; letter-spacing: .14em; }
+.storefront-local { margin: 12px 0 4px; font-size: clamp(1.7rem, 6vw, 2.4rem); line-height: 1.12; letter-spacing: -.035em; }
+.storefront-intro { margin: 0; color: #77737e; }
+.storefront-categories { display: flex; gap: 8px; margin: 20px -16px 0; padding: 0 16px 4px; overflow-x: auto; scrollbar-width: none; }
+.storefront-categories::-webkit-scrollbar { display: none; }
+.storefront-category { width: auto; flex: 0 0 auto; min-height: 38px; margin: 0; padding: 8px 14px; border: 1px solid #f0eff2; border-radius: 999px; background: #fff; color: #171225; font: inherit; font-size: .85rem; font-weight: 650; cursor: pointer; box-shadow: none; }
+.storefront-category.is-selected { border-color: var(--store-accent, #171225); background: var(--store-accent, #171225); color: #fff; }
+.storefront-list { display: grid; gap: 12px; margin-top: 24px; }
+.storefront-product { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px; border: 1px solid #f0eff2; border-radius: 18px; background: #fff; box-shadow: 0 5px 18px rgba(44, 28, 25, .035); }
+.storefront-product-image { display: grid; width: 88px; height: 88px; place-items: center; border-radius: 14px; background: #f4f3f6; color: var(--store-accent, #171225); font-size: 1.4rem; font-weight: 850; object-fit: cover; }
+.storefront-product-info { min-width: 0; }
+.storefront-product-category { display: block; margin-bottom: 4px; color: #77737e; font-size: .72rem; font-weight: 700; }
+.storefront-product h2 { margin: 0; font-size: 1rem; }
+.storefront-product p { margin: 5px 0 8px; color: #77737e; font-size: .9rem; }
+.storefront-price { color: var(--store-accent, #171225); font-weight: 780; }
+.storefront-controls { display: flex; align-items: center; gap: 10px; }
+.storefront-controls .storefront-add { width: auto; min-width: 96px; height: 40px; padding: 0 12px; border-color: #e8e6ec; border-radius: 999px; color: #171225; font-size: .82rem; }
+.storefront-controls button { display: grid; width: 38px; height: 38px; margin: 0; padding: 0; place-items: center; border: 1px solid #e8e6ec; border-radius: 12px; background: #fff; color: #171225; font: inherit; font-size: 1.2rem; font-weight: 760; box-shadow: none; }
+.storefront-controls button:disabled { opacity: .42; cursor: default; }
+.storefront-count { min-width: 18px; text-align: center; font-weight: 720; }
+.storefront-checkout { position: fixed; right: 0; bottom: 0; left: 0; z-index: 2; padding: 14px 16px max(14px, env(safe-area-inset-bottom)); border-top: 1px solid #f0eff2; background: rgba(255,255,255,.96); backdrop-filter: blur(14px); }
+.storefront-checkout-inner { display: flex; width: min(100%, 720px); margin: 0 auto; align-items: center; justify-content: space-between; gap: 14px; }
+.storefront-total small { display: block; color: #77737e; font-size: .78rem; }
+.storefront-total strong { font-size: 1.05rem; }
+.storefront-action, .storefront-link { width: auto; min-height: 48px; margin: 0; padding: 12px 16px; border: 0; border-radius: 14px; background: var(--store-accent, #171225); color: #fff; font: inherit; font-weight: 760; text-align: center; text-decoration: none; cursor: pointer; box-shadow: 0 7px 18px rgba(169,72,63,.18); }
+.storefront-action:disabled { opacity: .48; cursor: default; }
+.storefront-link.secondary { background: #f4f3f6; color: #171225; box-shadow: none; }
+.storefront-message { max-width: 520px; margin: 12vh auto 0; padding: 26px; border: 1px solid #f0eff2; border-radius: 22px; background: #fff; text-align: center; }
+.storefront-message h1 { margin: 10px 0 8px; font-size: 1.55rem; }
+.storefront-message p { color: #77737e; line-height: 1.55; }
+.storefront-message .storefront-action { margin-top: 12px; }
+.storefront-dialog { width: min(calc(100% - 32px), 470px); padding: 0; border: 0; border-radius: 22px; box-shadow: 0 24px 80px rgba(32,20,18,.22); }
+.storefront-dialog::backdrop { background: rgba(31,23,21,.42); backdrop-filter: blur(3px); }
+.storefront-dialog form { padding: 24px; }
+.storefront-dialog h2 { margin: 0; }
+.storefront-dialog p { color: #77737e; }
+.storefront-dialog label { display: block; margin: 14px 0 6px; font-size: .9rem; font-weight: 700; }
+.storefront-dialog input { width: 100%; min-height: 48px; padding: 11px 13px; border: 1px solid #e8e6ec; border-radius: 12px; font: inherit; }
+.storefront-dialog-actions { display: flex; gap: 10px; margin-top: 18px; }
+.storefront-dialog-actions button { flex: 1; margin: 0; }
+.storefront-error { color: #6b4055 !important; }
+@media (max-width: 480px) {
+  .storefront-product { grid-template-columns: 72px minmax(0, 1fr); gap: 11px; padding: 12px; }
+  .storefront-product-image { width: 72px; height: 72px; border-radius: 12px; }
+  .storefront-product h2 { font-size: .95rem; }
+  .storefront-product p { font-size: .82rem; }
+  .storefront-controls { grid-column: 2; justify-content: space-between; }
+  .storefront-product-category { font-size: .68rem; }
+  .storefront-checkout-inner { align-items: center; }
+  .storefront-action { padding: 12px 13px; font-size: .9rem; }
+}
+
+/* Neutral rounded storefront, independent from the loyalty form palette. */
+.storefront-page { --store-accent: #171225; --store-on-accent: #fff; font-family: Poppins, system-ui, sans-serif; padding-top: 12px; }
+.storefront-header { position: sticky; top: 0; background: #fff; z-index: 1; padding: 12px 0; }
+.storefront-logo { width: 76px; height: 76px; border-radius: 24px; object-fit: cover; }
+.storefront-monogram { display: grid; place-items: center; background: #f4f3f6; font-size: 28px; font-weight: 750; }
+.storefront-brand { color: #171225; }
+.storefront-product { border: 0; padding: 18px 0; border-radius: 0; box-shadow: none; border-bottom: 1px solid #f4f3f6; }
+.storefront-product-image { border-radius: 24px; }
+.storefront-category { border: 0; background: #f4f3f6; padding: 12px 20px; min-height: 46px; }
+.storefront-category.is-selected, .storefront-action { background: var(--store-accent); color: var(--store-on-accent); box-shadow: none; }
+.storefront-action, .storefront-link, .storefront-controls button { border-radius: 999px; }
+.storefront-controls .storefront-add { background: #f4f3f6; border: 0; border-radius: 999px; color: #171225; }
+.storefront-price { color: #171225; }
+.storefront-cart-button { width: auto; margin: 0; padding: 12px 18px; border: 0; border-radius: 999px; background: #f4f3f6; color: #171225; font: inherit; font-weight: 650; box-shadow: none; }
+.storefront-product-title { display: block; width: auto; padding: 0; margin: 0; border: 0; border-radius: 0; background: none; color: #171225; font: inherit; font-size: 1.05rem; font-weight: 700; text-align: left; box-shadow: none; cursor: pointer; }
+.storefront-detail { padding: 24px; }
+.storefront-detail-image { width: 100%; max-height: 320px; object-fit: cover; border-radius: 24px; margin-bottom: 18px; }
+.storefront-order-summary { background: #f4f3f6; border-radius: 20px; padding: 12px 16px; margin: 16px 0; }
+.storefront-order-summary p { color: #171225; }
+.storefront-dialog-actions { flex-wrap: wrap; }
+.storefront-dialog-actions button { min-width: 120px; }
+@media (max-width: 480px) { .storefront-product-image { border-radius: 22px; } .storefront-product { padding: 18px 0; } }
+
+.storefront-receipt { max-width: 560px; margin: 28px auto; padding: 28px; border: 1px solid #e8e6ec; border-radius: 28px; background: #fff; box-shadow: 0 12px 40px #17122508; }
+.storefront-receipt-check { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: #eef6f2; color: #24755b; font-size: 28px; }
+.storefront-receipt h1 { margin-bottom: 6px; font-size: 1.8rem; }
+.storefront-receipt h2 { margin-top: 0; font-size: 1rem; font-weight: 500; color: #77737e; }
+.storefront-receipt-status { color: #24755b; font-weight: 650; }
+.storefront-receipt-code { font-weight: 700; overflow-wrap: anywhere; }
+.storefront-receipt-date { color: #77737e; font-size: .85rem; }
+.storefront-receipt-items { border-top: 1px dashed #ddd9e4; border-bottom: 1px dashed #ddd9e4; margin: 24px 0 0; }
+.storefront-receipt-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 16px 0; }
+.storefront-receipt-row small { display: block; color: #77737e; margin-top: 5px; }
+.storefront-receipt-total { font-size: 1.4rem; margin-bottom: 20px; }
+.storefront-receipt > button { width: 100%; }
+
+.storefront-dialog textarea { box-sizing: border-box; width: 100%; padding: 14px; border: 1px solid #dddbe3; border-radius: 16px; font: inherit; resize: vertical; }
+
+/* One page scroll: vertical only when content exceeds the viewport. */
+html.storefront-route { overflow-x: clip; overflow-y: auto; }
+html.storefront-route body { min-width: 0; width: 100%; overflow: visible; }
+.storefront-page, .storefront-page *, .storefront-page *::before, .storefront-page *::after { box-sizing: border-box; }
+.storefront-page { width: 100%; min-width: 0; }
+.storefront-shell, .storefront-list, .storefront-header, .storefront-checkout-inner { min-width: 0; max-width: 100%; }
+.storefront-categories { max-width: 100%; margin-inline: 0; padding-inline: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
+.storefront-local, .storefront-product-info, .storefront-product-title, .storefront-message, .storefront-receipt { overflow-wrap: anywhere; }
+.storefront-logo { flex: 0 0 76px; }
+.storefront-cart-button { min-width: 0; }
+.storefront-checkout-inner > * { min-width: 0; }
+.storefront-receipt-row > :first-child { min-width: 0; overflow-wrap: anywhere; }
+.storefront-receipt-row > :last-child { flex-shrink: 0; }
+.storefront-dialog { max-width: calc(100% - 32px); max-height: calc(100dvh - 48px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
+@media (max-width: 360px) {
+  .storefront-controls { flex-wrap: wrap; gap: 6px; }
+  .storefront-controls .storefront-add { min-width: 0; }
+  .storefront-receipt { padding: 18px; }
+  .storefront-receipt-row { gap: 10px; }
+}

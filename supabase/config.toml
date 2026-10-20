@@ -1,0 +1,5 @@
+project_id = "fideli"
+
+[functions.wallet]
+verify_jwt = false
+

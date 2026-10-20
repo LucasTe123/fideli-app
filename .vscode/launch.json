@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Fideli Web — Chrome",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "chrome",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}",
+      "flutterMode": "debug",
+      "toolArgs": ["--no-web-resources-cdn"],
+      "debugSdkLibraries": false,
+      "debugExternalPackageLibraries": false
+    },
+    {
+      "name": "Fideli iPhone",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}",
+      "flutterMode": "debug",
+      "debugSdkLibraries": false,
+      "debugExternalPackageLibraries": false
+    }
+  ]
+}

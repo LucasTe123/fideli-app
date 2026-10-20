@@ -1,0 +1,13 @@
+{
+  "name": "fideli-wallet-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Servicio local seguro para firmar pases Apple/Google Wallet de Fideli",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
