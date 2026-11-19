@@ -4,15 +4,15 @@ import 'package:flutter/material.dart';
 /// Cambiar estos valores modifica el botón QR en toda la aplicación.
 enum ScannerButtonShape { circle, roundedSquare, pill }
 
-enum ScannerOpenMode { fullScreen, bottomSheet }
+enum ScannerOpenMode { fullScreen, bottomSheet, topOverlay }
 
 class ScannerUiConfig {
   const ScannerUiConfig({
-    this.color = const Color(0xFF1D1D21),
+    this.color = const Color(0xFFED5264),
     this.foregroundColor = Colors.white,
     this.icon = Icons.qr_code_scanner_rounded,
     this.shape = ScannerButtonShape.circle,
-    this.openMode = ScannerOpenMode.fullScreen,
+    this.openMode = ScannerOpenMode.topOverlay,
     this.screenTitle = 'Escanear cliente',
     this.tooltip = 'Escanear QR de cliente',
     this.size = 64,

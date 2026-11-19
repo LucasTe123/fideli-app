@@ -130,7 +130,7 @@ class ProgramsScreen extends StatelessWidget {
                             child: FilledButton(
                               onPressed: () => _editProgram(context),
                               style: FilledButton.styleFrom(
-                                backgroundColor: FideliTheme.ink,
+                                backgroundColor: FideliTheme.coral,
                                 foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(18),

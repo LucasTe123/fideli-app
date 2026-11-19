@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../config/supabase_config.dart';
@@ -11,7 +12,9 @@ import '../widgets/customer_avatar.dart';
 import 'customers_screen.dart';
 
 class ScanCustomerScreen extends StatefulWidget {
-  const ScanCustomerScreen({super.key});
+  const ScanCustomerScreen({super.key, this.compact = false});
+
+  final bool compact;
 
   @override
   State<ScanCustomerScreen> createState() => _ScanCustomerScreenState();
@@ -23,6 +26,8 @@ class _ScanCustomerScreenState extends State<ScanCustomerScreen> {
   final _search = TextEditingController();
   bool _handling = false;
   bool _torchEnabled = false;
+  String? _lastBeepRaw;
+  DateTime? _lastBeepAt;
 
   @override
   void dispose() {
@@ -35,6 +40,15 @@ class _ScanCustomerScreenState extends State<ScanCustomerScreen> {
     if (_handling || capture.barcodes.isEmpty) return;
     final raw = capture.barcodes.first.rawValue?.trim();
     if (raw == null || raw.isEmpty) return;
+    final now = DateTime.now();
+    if (raw != _lastBeepRaw ||
+        _lastBeepAt == null ||
+        now.difference(_lastBeepAt!) > const Duration(milliseconds: 1400)) {
+      _lastBeepRaw = raw;
+      _lastBeepAt = now;
+      await SystemSound.play(SystemSoundType.alert);
+      if (!mounted) return;
+    }
     final parsed = _customer(raw);
     if (parsed == null) {
       showMessage(context, 'El QR no pertenece a Fideli');
@@ -227,7 +241,9 @@ class _ScanCustomerScreenState extends State<ScanCustomerScreen> {
                     Expanded(
                       child: Center(
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 520),
+                          constraints: BoxConstraints(
+                            maxWidth: widget.compact ? 420 : 520,
+                          ),
                           child: scanner,
                         ),
                       ),
@@ -284,7 +300,7 @@ class _ScanCustomerScreenState extends State<ScanCustomerScreen> {
         ],
       ),
       child: AspectRatio(
-        aspectRatio: .92,
+        aspectRatio: widget.compact ? 1.12 : .92,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(30),
           child: Stack(
@@ -292,6 +308,7 @@ class _ScanCustomerScreenState extends State<ScanCustomerScreen> {
             children: [
               MobileScanner(controller: _controller, onDetect: _detected),
               const IgnorePointer(child: _ScannerShade()),
+              const Positioned.fill(child: _ScannerLaser()),
               Positioned(
                 top: 14,
                 right: 14,
@@ -476,6 +493,78 @@ class _ScannerShadePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+class _ScannerLaser extends StatefulWidget {
+  const _ScannerLaser();
+
+  @override
+  State<_ScannerLaser> createState() => _ScannerLaserState();
+}
+
+class _ScannerLaserState extends State<_ScannerLaser>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1450),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) => CustomPaint(
+        painter: _ScannerLaserPainter(
+          Curves.easeInOut.transform(_controller.value),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScannerLaserPainter extends CustomPainter {
+  const _ScannerLaserPainter(this.progress);
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scanSize = size.width * .67;
+    final scanRect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height * .46),
+      width: scanSize,
+      height: scanSize,
+    );
+    final lineY = scanRect.top + 16 + (scanRect.height - 32) * progress;
+    final start = Offset(scanRect.left + 18, lineY);
+    final end = Offset(scanRect.right - 18, lineY);
+    final glow = Paint()
+      ..color = const Color(0xAA3BFF8B)
+      ..strokeWidth = 11
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    final beam = Paint()
+      ..color = const Color(0xFF56FF98)
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    final core = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 1
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(start, end, glow);
+    canvas.drawLine(start, end, beam);
+    canvas.drawLine(start, end, core);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScannerLaserPainter oldDelegate) =>
+      oldDelegate.progress != progress;
+}
+
 class _CameraButton extends StatelessWidget {
   const _CameraButton({
     required this.tooltip,
@@ -495,7 +584,9 @@ class _CameraButton extends StatelessWidget {
       tooltip: tooltip,
       onPressed: onPressed,
       style: IconButton.styleFrom(
-        backgroundColor: selected ? FideliTheme.ink : const Color(0x99000000),
+        backgroundColor: selected
+            ? FideliTheme.coral
+            : FideliTheme.coral.withValues(alpha: .6),
         foregroundColor: Colors.white,
         minimumSize: const Size(46, 46),
       ),

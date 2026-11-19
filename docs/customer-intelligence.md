@@ -12,8 +12,10 @@ lectura a miembros autenticados del negocio correspondiente.
 - Cadencia personal combinada con la mediana real del negocio cuando el cliente
   todavía tiene poco historial.
 - Próxima visita esperada, retraso relativo, tendencias, riesgo y valor.
-- Segmentos: Nuevo, Frecuente, Regular, Ocasional, En riesgo, Inactivo y
-  Recuperado.
+- Estados visibles simplificados: Nuevo, Preocupante y Riesgo. Los clientes
+  dentro de su ritmo habitual no reciben una alerta.
+- El motor conserva sus estados y puntajes detallados para estimar la cadencia
+  individual; la interfaz agrupa esos resultados en las tres etiquetas visibles.
 - Historial de cambios de segmento con razones y una copia de los puntajes.
 - Audiencias dinámicas en campañas. La audiencia se resuelve al momento de
   enviar; no se guarda una lista que pueda quedar obsoleta.
@@ -47,8 +49,11 @@ el sistema evita conclusiones extremas con poco historial.
 
 El riesgo combina retraso respecto a la cadencia, caída de frecuencia y
 tendencia reciente. El valor combina frecuencia relativa y gasto relativo del
-negocio. Los segmentos usan esos valores junto con el historial y el estado
-anterior; por eso un cliente puede aparecer como Recuperado después de volver.
+negocio. Los estados visibles agrupan el resultado: Nuevo para clientes con
+poco historial, Preocupante para clientes que empiezan a retrasarse y Riesgo
+para quienes superaron ampliamente su cadencia esperada. Frecuentes, regulares,
+ocasionales y recuperados siguen siendo señales internas del motor, no filtros
+principales para el comercio.
 
 ## Próximas fases
 

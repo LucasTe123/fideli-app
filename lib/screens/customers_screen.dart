@@ -30,9 +30,9 @@ class CustomersScreen extends StatefulWidget {
 class _CustomersScreenState extends State<CustomersScreen> {
   final _search = TextEditingController();
 
-  CustomerSegment? _segment;
+  CustomerAttention? _attention;
 
-  _CustomerSort _sort = _CustomerSort.name;
+  _CustomerSort _sort = _CustomerSort.risk;
 
   bool _busy = false;
 
@@ -149,8 +149,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final customers = state.data.customers
         .where(
           (customer) =>
-              (_segment == null ||
-                  customer.intelligence?.segment == _segment) &&
+              (_attention == null ||
+                  customer.intelligence?.attention == _attention) &&
               (query.isEmpty ||
                   customer.name.toLowerCase().contains(query) ||
                   customer.referralCode.toLowerCase().contains(query) ||
@@ -254,19 +254,20 @@ class _CustomersScreenState extends State<CustomersScreen> {
               _SegmentChip(
                 label: 'Todos',
                 count: state.data.customers.length,
-                selected: _segment == null,
-                onTap: () => setState(() => _segment = null),
+                selected: _attention == null,
+                onTap: () => setState(() => _attention = null),
               ),
-              for (final segment in CustomerSegment.values)
+              for (final attention in CustomerAttention.values)
                 _SegmentChip(
-                  label: segment.label,
+                  label: attention.label,
                   count: state.data.customers
                       .where(
-                        (customer) => customer.intelligence?.segment == segment,
+                        (customer) =>
+                            customer.intelligence?.attention == attention,
                       )
                       .length,
-                  selected: _segment == segment,
-                  onTap: () => setState(() => _segment = segment),
+                  selected: _attention == attention,
+                  onTap: () => setState(() => _attention = attention),
                 ),
             ],
           ),
@@ -356,8 +357,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
                             : customer.email.isNotEmpty
                             ? customer.email
                             : 'Sin datos de contacto')
-                      : '${customer.intelligence!.segment.label} · '
-                            '${customer.intelligence!.explanation}',
+                      : customer.intelligence!.statusLabel == null
+                      ? customer.intelligence!.statusExplanation
+                      : '${customer.intelligence!.statusLabel} · ${customer.intelligence!.statusExplanation}',
 
                   maxLines: 2,
 
@@ -1958,7 +1960,7 @@ class _CustomerIntelligenceCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  intelligence.segment.label,
+                  intelligence.statusLabel ?? 'Análisis de visitas',
                   style: const TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 20,
@@ -1980,7 +1982,7 @@ class _CustomerIntelligenceCard extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           Text(
-            intelligence.explanation,
+            intelligence.statusExplanation,
             style: const TextStyle(
               fontFamily: 'Poppins',
               fontSize: 12,

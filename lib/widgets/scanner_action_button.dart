@@ -79,6 +79,114 @@ class ScannerActionButton extends StatelessWidget {
       );
       return;
     }
+    if (config.openMode == ScannerOpenMode.topOverlay) {
+      final overlayBuilder =
+          scannerBuilder ?? (_) => const ScanCustomerScreen(compact: true);
+      await showGeneralDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'Cerrar escáner',
+        barrierColor: const Color(0x660F0B12),
+        transitionDuration: const Duration(milliseconds: 460),
+        pageBuilder: (dialogContext, _, _) {
+          final screen = MediaQuery.sizeOf(dialogContext);
+          final panelHeight = (screen.height * .78)
+              .clamp(300.0, 700.0)
+              .toDouble();
+          return SafeArea(
+            minimum: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Material(
+                color: Colors.white,
+                elevation: 24,
+                shadowColor: const Color(0x33000000),
+                borderRadius: BorderRadius.circular(30),
+                clipBehavior: Clip.antiAlias,
+                child: SizedBox(
+                  width: (screen.width - 36).clamp(320.0, 1180.0).toDouble(),
+                  height: panelHeight,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 12, 14, 8),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFCE8EB),
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              child: const Icon(
+                                Icons.qr_code_scanner_rounded,
+                                color: Color(0xFFED5264),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    config.screenTitle,
+                                    style: Theme.of(dialogContext)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(
+                                          fontFamily: 'Poppins',
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                  const Text(
+                                    'Escanea un QR o busca al cliente',
+                                    style: TextStyle(
+                                      color: Color(0xFF817A78),
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton.filledTonal(
+                              tooltip: 'Cerrar',
+                              onPressed: () => Navigator.pop(dialogContext),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(child: overlayBuilder(dialogContext)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutBack,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, -1.08),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      );
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => Scaffold(

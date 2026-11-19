@@ -14,28 +14,31 @@ Uint8List compressStoreImage(Uint8List bytes) {
     throw StateError('No pudimos leer esa foto. Prueba con otra imagen.');
   }
   var image = img.bakeOrientation(decoded);
-  if (image.width > 1200 || image.height > 1200) {
-    image = img.copyResize(
-      image,
-      width: image.width >= image.height ? 1200 : null,
-      height: image.height > image.width ? 1200 : null,
-    );
-  }
-  for (final quality in [82, 70, 55, 40]) {
-    final result = Uint8List.fromList(img.encodeJpg(image, quality: quality));
-    if (result.length <= 350000) return result;
+  const maxBytes = 1800000;
+  for (final maxDimension in [2000, 1800, 1600]) {
+    if (image.width > maxDimension || image.height > maxDimension) {
+      image = img.copyResize(
+        image,
+        width: image.width >= image.height ? maxDimension : null,
+        height: image.height > image.width ? maxDimension : null,
+      );
+    }
+    for (final quality in [90, 86, 82, 80]) {
+      final result = Uint8List.fromList(img.encodeJpg(image, quality: quality));
+      if (result.length <= maxBytes) return result;
+    }
   }
   throw StateError(
-    'La foto tiene demasiado detalle. Elige una imagen más pequeña.',
+    'No se pudo reducir la foto manteniendo una buena calidad. Elige otra imagen.',
   );
 }
 
 Future<Uint8List?> pickStoreImage() async {
   final file = await ImagePicker().pickImage(
     source: ImageSource.gallery,
-    maxWidth: 1600,
-    maxHeight: 1600,
-    imageQuality: 90,
+    maxWidth: 2400,
+    maxHeight: 2400,
+    imageQuality: 100,
   );
   if (file == null) return null;
   return prepareStoreImage(file);

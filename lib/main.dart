@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
+import 'models/app_data.dart';
 import 'screens/navigation_menu_screen.dart';
 import 'screens/escena_cafe_screen.dart';
 import 'screens/auth_flow_screen.dart';
@@ -109,6 +112,8 @@ class _FideliAppState extends State<FideliApp> {
   late final Future<void> _cloudReady =
       widget.cloudReady ?? Future<void>.value();
   bool _accessGranted = false;
+  BusinessProfile? _savedBusiness;
+  Uint8List? _savedBusinessMark;
   String? get _publicStoreSlug {
     final value = Uri.base.queryParameters['tienda']?.trim();
     return value == null || value.isEmpty ? null : value;
@@ -148,9 +153,19 @@ class _FideliAppState extends State<FideliApp> {
     // autenticado. Así el AppScope nunca cambia con un diálogo vivo encima.
     _navigatorKey.currentState?.popUntil((route) => route.isFirst);
     await WidgetsBinding.instance.endOfFrame;
-    final cloud = CloudStore.instance;
-    await cloud?.signOutRestaurant();
+    // Conserva la sesión en el selector de cuentas para poder retomarla sin
+    // volver a escribir la contraseña. La "X" del selector sí la elimina.
+    final savedBusiness = BusinessProfile.fromJson(
+      Map<String, dynamic>.from(_state.data.business.toJson()),
+    );
+    final markFuture = CloudStore.instance
+        ?.downloadBusinessMark(
+          logoPath: savedBusiness.walletLogoPath,
+          iconPath: savedBusiness.walletIconPath,
+        )
+        .catchError((_) => null);
     final nextState = await AppState.load();
+    final savedMark = await markFuture;
     if (!mounted) {
       nextState.dispose();
       return;
@@ -159,6 +174,8 @@ class _FideliAppState extends State<FideliApp> {
     setState(() {
       _state = nextState;
       _accessGranted = false;
+      _savedBusiness = savedBusiness;
+      _savedBusinessMark = savedMark;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!identical(previousState, _state)) previousState.dispose();
@@ -204,6 +221,8 @@ class _FideliAppState extends State<FideliApp> {
             ? AuthFlowScreen(
                 hasSavedSession:
                     CloudStore.instance?.hasRestaurantSession == true,
+                savedBusiness: _savedBusiness,
+                savedBusinessMark: _savedBusinessMark,
                 onAuthenticated: _authenticated,
               )
             : _state.data.business.onboarded

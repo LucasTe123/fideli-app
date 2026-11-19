@@ -11,10 +11,22 @@ class CampaignsScreen extends StatefulWidget {
     super.key,
     this.openComposerOnStart = false,
     this.walletService,
+    this.initialAudience,
+    this.initialTargetCustomerId,
+    this.initialTargetCustomerName,
+    this.initialName,
+    this.initialNotificationTitle,
+    this.initialMessage,
   });
 
   final bool openComposerOnStart;
   final WalletService? walletService;
+  final String? initialAudience;
+  final String? initialTargetCustomerId;
+  final String? initialTargetCustomerName;
+  final String? initialName;
+  final String? initialNotificationTitle;
+  final String? initialMessage;
 
   @override
   State<CampaignsScreen> createState() => _CampaignsScreenState();
@@ -318,6 +330,9 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
             message: payload.message,
             audience: payload.audience,
             targetCustomerId: payload.targetCustomerId,
+            birthdayDate: payload.audience == 'Cumpleañeros de hoy'
+                ? _localDateString(DateTime.now())
+                : null,
             linkUrl: payload.linkUrl,
           );
       if (!context.mounted) {
@@ -355,21 +370,31 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
     // =========================================================
     // CONTROLADORES
     // =========================================================
-    final name = TextEditingController(text: campaign?.name ?? '');
-    final notificationTitle = TextEditingController(
-      text: campaign?.notificationTitle ?? '',
+    final name = TextEditingController(
+      text: campaign?.name ?? widget.initialName ?? '',
     );
-    final message = TextEditingController(text: campaign?.message ?? '');
+    final notificationTitle = TextEditingController(
+      text:
+          campaign?.notificationTitle ?? widget.initialNotificationTitle ?? '',
+    );
+    final message = TextEditingController(
+      text: campaign?.message ?? widget.initialMessage ?? '',
+    );
     final link = TextEditingController(text: campaign?.linkUrl ?? '');
     final customerSearch = TextEditingController(
-      text: campaign?.targetCustomerName ?? '',
+      text:
+          campaign?.targetCustomerName ??
+          widget.initialTargetCustomerName ??
+          '',
     );
     // =========================================================
     // PÚBLICO
     // =========================================================
-    var audience = campaign?.audience ?? 'Todos';
-    String? selectedCustomerId = campaign?.targetCustomerId;
-    String? selectedCustomerName = campaign?.targetCustomerName;
+    var audience = campaign?.audience ?? widget.initialAudience ?? 'Todos';
+    String? selectedCustomerId =
+        campaign?.targetCustomerId ?? widget.initialTargetCustomerId;
+    String? selectedCustomerName =
+        campaign?.targetCustomerName ?? widget.initialTargetCustomerName;
     String? linkError;
     String? nameError;
     String? messageError;
@@ -377,14 +402,17 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
     const audiences = [
       'Todos',
       'Nuevos',
-      'Frecuentes',
-      'Regulares',
-      'Ocasionales',
-      'En riesgo',
-      'Inactivos',
-      'Recuperados',
+      'Preocupantes',
+      'Riesgo',
+      'Cumpleañeros de hoy',
       'Una persona',
     ];
+    audience = switch (audience) {
+      'En riesgo' => 'Preocupantes',
+      'Inactivos' => 'Riesgo',
+      'Frecuentes' || 'Regulares' || 'Ocasionales' || 'Recuperados' => 'Todos',
+      _ => audience,
+    };
     if (!audiences.contains(audience)) {
       audience = 'Todos';
     }
@@ -1302,6 +1330,9 @@ String? _normalizeCampaignUrl(String value) {
   }
   return uri.toString();
 }
+
+String _localDateString(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
 // ============================================================================
 // SILK-INSPIRED KEYBOARD SHEET · IMPLEMENTACIÓN NATIVA FLUTTER

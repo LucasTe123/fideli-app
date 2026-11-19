@@ -79,6 +79,7 @@ flutter:
     - assets/animations/
     - assets/images/dashboard/
     - assets/images/avatars/
+    - assets/images/stamps/
     - assets/images/business/notification_preview_template.jpg
 
   fonts:

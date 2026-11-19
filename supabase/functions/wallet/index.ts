@@ -9,6 +9,10 @@ import {
   phosphorStampPngActive,
   phosphorStampPngInactive,
 } from "./phosphor_icons.ts";
+import {
+  illustratedStampPngActive,
+  illustratedStampPngInactive,
+} from "./stamp_illustrations.ts";
 
 declare const EdgeRuntime: {
   waitUntil(promise: Promise<unknown>): void;
@@ -759,11 +763,15 @@ function drawStamp(
 ) {
   const px = (value: number) => (x + value) * scale;
   const py = (value: number) => (y + value) * scale;
+  const illustrated = opacity >= 0.8
+    ? illustratedStampPngActive[type]
+    : illustratedStampPngInactive[type];
   const phosphor = opacity >= 0.8
     ? (phosphorStampPngActive[type] || phosphorStampPngActive.coffee)
     : (phosphorStampPngInactive[type] || phosphorStampPngInactive.coffee);
-  if (phosphor) {
-    ImageMagick.read(Buffer.from(phosphor, "base64"), (iconImage) => {
+  const stampPng = illustrated || phosphor;
+  if (stampPng) {
+    ImageMagick.read(Buffer.from(stampPng, "base64"), (iconImage) => {
       iconImage.resize(44 * scale, 44 * scale);
       image.composite(
         iconImage,
@@ -947,6 +955,27 @@ async function loyaltyCard(businessId: string, cardId?: string | null): Promise<
   else query = query.eq("active", true).order("created_at", { ascending: true }).limit(1);
   const { data } = await query.maybeSingle();
   return data as LoyaltyCard | null;
+}
+
+async function walletPassSerialsForCard(
+  businessId: string,
+  customerId: string,
+  cardId: string,
+) {
+  const [defaultCard, { data: passes, error }] = await Promise.all([
+    loyaltyCard(businessId),
+    admin.from("wallet_passes")
+      .select("serial_number,card_id")
+      .eq("business_id", businessId)
+      .or(`customer_id.eq.${customerId},serial_number.eq.${customerId}`),
+  ]);
+  if (error) throw error;
+  return (passes || [])
+    .filter((pass) =>
+      pass.card_id === cardId ||
+      (pass.card_id == null && pass.serial_number === customerId && defaultCard?.id === cardId)
+    )
+    .map((pass) => pass.serial_number as string);
 }
 
 function registrationCategory(cardRow: LoyaltyCard | null) {
@@ -1255,7 +1284,7 @@ async function createPass(customerRow: Customer, serialNumber = customerRow.id, 
       userInfo: {
         designRevision: cardRow?.updated_at || "default",
         designStampIcon: cardRow?.stamp_icon || "coffee",
-        stampArtworkVersion: "embedded-logo-large-v6",
+        stampArtworkVersion: "wallet-stamps-illustrated-v4",
         designBackground: cardRow?.background_image_path || "",
         designLayout: cardRow?.wallet_layout || "poster",
         businessRevision: businessRow.updated_at || "default",
@@ -1372,7 +1401,11 @@ function googleEnrollmentUrl(customerId: string, cardId?: string | null) {
   return result.toString();
 }
 
-async function syncGooglePassDesign(customerRow: Customer, cardRow: LoyaltyCard | null) {
+async function syncGooglePassDesign(
+  customerRow: Customer,
+  cardRow: LoyaltyCard | null,
+  updateObject = true,
+) {
   if (!cardRow || !googleIssuerId) return;
   const token = await googleAccessToken();
   if (!token) return;
@@ -1402,7 +1435,53 @@ async function syncGooglePassDesign(customerRow: Customer, cardRow: LoyaltyCard 
   if (!result.ok && result.status !== 404) {
     throw new Error(`Google Wallet class update ${result.status}`);
   }
-  await updateGoogleCard(customerRow, cardRow, null);
+  if (updateObject) await updateGoogleCard(customerRow, cardRow, null);
+}
+
+async function syncGoogleBusinessDesign(businessId: string, onlyCardId?: string) {
+  if (!googleIssuerId) return;
+  let enrollmentQuery = admin
+    .from("customer_card_enrollments")
+    .select("customer_id,card_id")
+    .eq("business_id", businessId);
+  if (onlyCardId) enrollmentQuery = enrollmentQuery.eq("card_id", onlyCardId);
+  const { data: enrollments, error: enrollmentError } = await enrollmentQuery;
+  if (enrollmentError) throw enrollmentError;
+  const pairs = [...new Map((enrollments || []).map((row) => [
+    `${row.customer_id}:${row.card_id}`,
+    { customerId: String(row.customer_id), cardId: String(row.card_id) },
+  ])).values()];
+  if (!pairs.length) return;
+  const customerIds = [...new Set(pairs.map((pair) => pair.customerId))];
+  const cardIds = [...new Set(pairs.map((pair) => pair.cardId))];
+  const [{ data: customers, error: customersError }, { data: cards, error: cardsError }] = await Promise.all([
+    admin.from("customers").select("*").eq("business_id", businessId).in("id", customerIds),
+    admin.from("loyalty_cards").select("*").eq("business_id", businessId).in("id", cardIds),
+  ]);
+  if (customersError) throw customersError;
+  if (cardsError) throw cardsError;
+  const customerById = new Map((customers || []).map((row) => [String(row.id), row as Customer]));
+  const cardById = new Map((cards || []).map((row) => [String(row.id), row as LoyaltyCard]));
+  const cardCustomers = new Map<string, Customer>();
+  for (const pair of pairs) {
+    const customerRow = customerById.get(pair.customerId);
+    if (customerRow && !cardCustomers.has(pair.cardId)) cardCustomers.set(pair.cardId, customerRow);
+  }
+  const classResults = await Promise.allSettled([...cardCustomers].map(async ([cardId, customerRow]) => {
+    const cardRow = cardById.get(cardId);
+    if (cardRow) await syncGooglePassDesign(customerRow, cardRow, false);
+  }));
+  classResults.forEach((result) => {
+    if (result.status === "rejected") console.error("Google Wallet class design update failed", result.reason);
+  });
+  const objectResults = await Promise.allSettled(pairs.map(async ({ customerId, cardId }) => {
+    const customerRow = customerById.get(customerId);
+    const cardRow = cardById.get(cardId);
+    if (customerRow && cardRow) await updateGoogleCard(customerRow, cardRow, null);
+  }));
+  objectResults.forEach((result) => {
+    if (result.status === "rejected") console.error("Google Wallet object design update failed", result.reason);
+  });
 }
 
 async function googleSaveUrl(
@@ -1419,7 +1498,7 @@ async function googleSaveUrl(
   const logoUrl = `${functionBaseUrl}/assets/google/logo/${safeId(customerRow.business_id)}.png?v=${encodeURIComponent(String(businessRow.updated_at || "1"))}`;
   const heroUrl = cardRow && (cardRow.background_image_path ||
       (!cardValues.isGift && !cardValues.isMembership))
-    ? `${functionBaseUrl}/assets/google/hero/${safeId(customerRow.id)}/${safeId(cardRow.id)}.png?v=${encodeURIComponent(`${cardValues.balance}-${cardRow.updated_at || "1"}`)}`
+      ? `${functionBaseUrl}/assets/google/hero/${safeId(customerRow.id)}/${safeId(cardRow.id)}.png?v=${encodeURIComponent(`${cardValues.balance}-${cardRow.updated_at || "1"}-wallet-stamps-illustrated-v4`)}`
     : null;
   const now = Math.floor(Date.now() / 1000);
   const referralUrl = publicClubForBusiness(
@@ -1597,6 +1676,7 @@ async function googleAccessToken() {
 }
 
 async function updateGoogleCampaign(
+  businessId: string,
   customerIds: string[],
   notificationTitle: string,
   message: string,
@@ -1605,8 +1685,24 @@ async function updateGoogleCampaign(
   if (!customerIds.length || !googleIssuerId) return;
   const token = await googleAccessToken();
   if (!token) return;
-  await Promise.allSettled(customerIds.map(async (customerId) => {
-    const objectId = `${googleIssuerId}.${customerId}`;
+  const { data: enrollments, error } = await admin
+    .from("customer_card_enrollments")
+    .select("customer_id,card_id")
+    .eq("business_id", businessId)
+    .in("customer_id", customerIds);
+  if (error) throw error;
+  const objectIds = new Set<string>();
+  for (const customerId of customerIds) {
+    // Keep the legacy object in the update set for customers who installed
+    // their pass before Fideli started creating one Google object per card.
+    objectIds.add(`${googleIssuerId}.${safeId(customerId)}`);
+  }
+  for (const enrollment of enrollments || []) {
+    if (enrollment.customer_id && enrollment.card_id) {
+      objectIds.add(`${googleIssuerId}.${safeId(String(enrollment.customer_id))}_${safeId(String(enrollment.card_id))}`);
+    }
+  }
+  const results = await Promise.allSettled([...objectIds].map(async (objectId) => {
     const encodedId = encodeURIComponent(objectId);
     const patchResponse = await fetch(
         `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${encodedId}`,
@@ -1629,6 +1725,7 @@ async function updateGoogleCampaign(
     if (!patchResponse.ok && patchResponse.status !== 404) {
       throw new Error(`Google Wallet patch ${patchResponse.status}`);
     }
+    if (patchResponse.status === 404) return;
     const notifyResponse = await fetch(
       `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${encodedId}/addMessage`,
       {
@@ -1652,6 +1749,9 @@ async function updateGoogleCampaign(
       throw new Error(`Google Wallet notification ${notifyResponse.status}`);
     }
   }));
+  results.forEach((result) => {
+    if (result.status === "rejected") console.error("Google Wallet campaign object update failed", result.reason);
+  });
 }
 
 async function updateGoogleCard(
@@ -1663,89 +1763,105 @@ async function updateGoogleCard(
   const token = await googleAccessToken();
   if (!token) return;
   const cardSuffix = `_${safeId(cardRow.id)}`;
-  const objectId = encodeURIComponent(
-    `${googleIssuerId}.${safeId(customerRow.id)}${cardSuffix}`,
-  );
+  const currentObjectId = `${googleIssuerId}.${safeId(customerRow.id)}${cardSuffix}`;
+  // Antes de que cada tarjeta tuviera su propio objeto, Google Wallet guardaba
+  // la tarjeta principal usando solo el id del cliente. Mantener ese pase
+  // actualizado evita que los clientes que ya lo instalaron vean un saldo viejo.
+  const defaultCard = await loyaltyCard(customerRow.business_id);
+  const objectIds = [currentObjectId];
+  if (defaultCard?.id === cardRow.id) {
+    objectIds.push(`${googleIssuerId}.${safeId(customerRow.id)}`);
+  }
   const cardValues = googleCardValues(customerRow, cardRow);
   const businessRow = await business(customerRow.business_id);
-  const heroUrl = `${functionBaseUrl}/assets/google/hero/${safeId(customerRow.id)}/${safeId(cardRow.id)}.png?v=${encodeURIComponent(`${cardValues.balance}-${cardRow.updated_at || Date.now()}`)}`;
-  const patchResponse = await fetch(
-    `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`,
-    {
-      method: "PATCH",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
+  const heroUrl = `${functionBaseUrl}/assets/google/hero/${safeId(customerRow.id)}/${safeId(cardRow.id)}.png?v=${encodeURIComponent(`${cardValues.balance}-${cardRow.updated_at || Date.now()}-wallet-stamps-illustrated-v4`)}`;
+  const patchBody = {
+    state: cardValues.inactive ? "INACTIVE" : "ACTIVE",
+    merchantLocations: googleMerchantLocations(businessRow),
+    barcode: cardValues.inactive
+      ? null
+      : {
+        type: "QR_CODE",
+        value: customerQrPayload(customerRow.id, cardRow.id, await qrTokenForCard(customerRow, cardRow)),
+        alternateText: customerRow.referral_code,
       },
-      body: JSON.stringify({
-        state: cardValues.inactive ? "INACTIVE" : "ACTIVE",
-        merchantLocations: googleMerchantLocations(businessRow),
-        barcode: cardValues.inactive
-          ? null
-          : {
-              type: "QR_CODE",
-              value: customerQrPayload(customerRow.id, cardRow.id, await qrTokenForCard(customerRow, cardRow)),
-              alternateText: customerRow.referral_code,
-            },
-        loyaltyPoints: {
-          label: cardValues.balanceLabel,
-          balance: { int: cardValues.balance },
-        },
-        heroImage: {
-          sourceUri: { uri: heroUrl },
-          contentDescription: {
-            defaultValue: { language: "es", value: cardRow.name },
-          },
-        },
-        textModulesData: [
-          cardValues.primary,
-          cardValues.secondary,
-          ...(cardRow.welcome_message?.trim()
-            ? [{
-                id: "welcome",
-                header: "Bienvenida",
-                body: cardRow.welcome_message
-                  .trim()
-                  .replaceAll("{nombre}", customerRow.name),
-              }]
-            : []),
-          ...(cardRow.expiration_notice?.trim()
-            ? [{
-                id: "expiration-notice",
-                header: "Aviso",
-                body: cardRow.expiration_notice.trim(),
-              }]
-            : []),
-        ],
-      }),
-      signal: AbortSignal.timeout(7000),
+    loyaltyPoints: {
+      label: cardValues.balanceLabel,
+      balance: { int: cardValues.balance },
     },
-  );
-  if (!patchResponse.ok && patchResponse.status !== 404) {
-    throw new Error(`Google Wallet progress update ${patchResponse.status}`);
+    heroImage: {
+      sourceUri: { uri: heroUrl },
+      contentDescription: {
+        defaultValue: { language: "es", value: cardRow.name },
+      },
+    },
+    textModulesData: [
+      cardValues.primary,
+      cardValues.secondary,
+      ...(cardRow.welcome_message?.trim()
+        ? [{
+          id: "welcome",
+          header: "Bienvenida",
+          body: cardRow.welcome_message
+            .trim()
+            .replaceAll("{nombre}", customerRow.name),
+        }]
+        : []),
+      ...(cardRow.expiration_notice?.trim()
+        ? [{
+          id: "expiration-notice",
+          header: "Aviso",
+          body: cardRow.expiration_notice.trim(),
+        }]
+        : []),
+    ],
+  };
+  const patchResults = await Promise.all(objectIds.map(async (candidateId) => {
+    const patchResponse = await fetch(
+      `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${encodeURIComponent(candidateId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(patchBody),
+        signal: AbortSignal.timeout(7000),
+      },
+    );
+    if (patchResponse.ok) return candidateId;
+    if (patchResponse.status !== 404) throw new Error(`Google Wallet progress update ${patchResponse.status}`);
+    return null;
+  }));
+  const updatedObjectIds = patchResults.filter((value): value is string => Boolean(value));
+  if (!updatedObjectIds.length) {
+    throw new Error("Google Wallet no encontró el pase instalado para actualizar");
   }
-  if (!patchResponse.ok || !notificationMessage) return;
-  const notifyResponse = await fetch(
-    `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}/addMessage`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        message: {
-          id: `progress-${Date.now()}`,
-          header: cardRow.name,
-          body: notificationMessage,
-          messageType: "TEXT_AND_NOTIFY",
+  if (notificationMessage) {
+    await Promise.all(updatedObjectIds.map(async (updatedObjectId) => {
+      const notifyResponse = await fetch(
+        `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${encodeURIComponent(updatedObjectId)}/addMessage`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            message: {
+              id: `progress-${Date.now()}`,
+              header: cardRow.name,
+              body: notificationMessage,
+              messageType: "TEXT_AND_NOTIFY",
+            },
+          }),
+          signal: AbortSignal.timeout(7000),
         },
-      }),
-      signal: AbortSignal.timeout(7000),
-    },
-  );
-  if (!notifyResponse.ok && notifyResponse.status !== 404) {
-    throw new Error(`Google Wallet progress notification ${notifyResponse.status}`);
+      );
+      if (!notifyResponse.ok && notifyResponse.status !== 404) {
+        throw new Error(`Google Wallet progress notification ${notifyResponse.status}`);
+      }
+    }));
   }
 }
 
@@ -2031,6 +2147,246 @@ async function processExpirationNotifications() {
   return processed;
 }
 
+type PendingRewardClaim = {
+  business_id: string;
+  customer_id: string;
+  reward_id: string;
+  program_id: string;
+  reward_name: string;
+  earned_at: string;
+  reminder_count: number;
+  last_reminder_at?: string | null;
+  claimed_at?: string | null;
+};
+
+async function syncRewardClaimsForCustomers(
+  businessId: string,
+  customers: Customer[],
+  cards: LoyaltyCard[],
+) {
+  if (!customers.length || !cards.length) return 0;
+  const { data: rewardRecords, error } = await admin
+    .from("module_records")
+    .select("payload")
+    .eq("business_id", businessId)
+    .eq("module_type", "reward");
+  if (error) throw error;
+
+  const cardById = new Map(cards.map((card) => [card.id, card]));
+  let inserted = 0;
+  for (const customerRow of customers) {
+    const candidates = new Map<string, { programId: string; name: string }>();
+    for (const row of rewardRecords || []) {
+      const reward = row.payload as Record<string, unknown>;
+      const rewardId = String(reward.id || "");
+      const programId = String(reward.programId || "");
+      const card = cardById.get(programId);
+      const balance = customerRow.card_balances?.[programId];
+      const pointsCost = Math.max(0, Number(reward.pointsCost) || 0);
+      const stampsCost = Math.max(0, Number(reward.stampsCost) || 0);
+      if (
+        rewardId && reward.active !== false && card?.active && balance &&
+        (pointsCost > 0 || stampsCost > 0) &&
+        Number(balance.points || 0) >= pointsCost &&
+        Number(balance.stamps || 0) >= stampsCost
+      ) {
+        candidates.set(rewardId, {
+          programId,
+          name: String(reward.name || "Premio"),
+        });
+      }
+    }
+    for (const card of cards) {
+      if (!card.active) continue;
+      const stamps = Number(customerRow.card_balances?.[card.id]?.stamps || 0);
+      for (const milestone of card.reward_milestones || []) {
+        const rewardId = String(milestone.id || "");
+        const stamp = Math.max(1, Number(milestone.stamp) || 0);
+        if (rewardId && stamps >= stamp) {
+          candidates.set(rewardId, {
+            programId: card.id,
+            name: String(milestone.reward || "Premio de la tarjeta"),
+          });
+        }
+      }
+    }
+    if (!candidates.size) continue;
+
+    const rewardIds = [...candidates.keys()];
+    const { data: redemptions, error: redemptionError } = await admin
+      .from("customer_reward_redemptions")
+      .select("reward_id")
+      .eq("business_id", businessId)
+      .eq("customer_id", customerRow.id)
+      .in("reward_id", rewardIds);
+    if (redemptionError) throw redemptionError;
+    const redeemed = new Set((redemptions || []).map((row) => String(row.reward_id)));
+    const now = new Date().toISOString();
+    const rows = [...candidates.entries()].map(([rewardId, candidate]) => ({
+      business_id: businessId,
+      customer_id: customerRow.id,
+      reward_id: rewardId,
+      program_id: candidate.programId,
+      reward_name: candidate.name,
+      earned_at: now,
+      ...(redeemed.has(rewardId) ? { claimed_at: now } : {}),
+    }));
+    const { error: claimError, count } = await admin
+      .from("customer_reward_claims")
+      .upsert(rows, {
+        onConflict: "business_id,customer_id,reward_id",
+        ignoreDuplicates: true,
+        count: "exact",
+      });
+    if (claimError) throw claimError;
+    inserted += count || 0;
+    if (redeemed.size) {
+      await admin.from("customer_reward_claims")
+        .update({ claimed_at: now })
+        .eq("business_id", businessId)
+        .eq("customer_id", customerRow.id)
+        .in("reward_id", [...redeemed])
+        .is("claimed_at", null);
+    }
+  }
+  return inserted;
+}
+
+async function processPendingRewardReminders() {
+  const [{ data: cards, error: cardError }, { data: customers, error: customerError }] =
+    await Promise.all([
+      admin.from("loyalty_cards").select("*").eq("active", true),
+      admin.from("customers").select("*").is("deleted_at", null),
+    ]);
+  if (cardError) throw cardError;
+  if (customerError) throw customerError;
+
+  const cardsByBusiness = new Map<string, LoyaltyCard[]>();
+  for (const raw of cards || []) {
+    const card = raw as LoyaltyCard;
+    cardsByBusiness.set(card.business_id, [
+      ...(cardsByBusiness.get(card.business_id) || []),
+      card,
+    ]);
+  }
+  const customersByBusiness = new Map<string, Customer[]>();
+  for (const raw of customers || []) {
+    const customerRow = raw as Customer;
+    customersByBusiness.set(customerRow.business_id, [
+      ...(customersByBusiness.get(customerRow.business_id) || []),
+      customerRow,
+    ]);
+  }
+  for (const [businessId, businessCustomers] of customersByBusiness) {
+    await syncRewardClaimsForCustomers(
+      businessId,
+      businessCustomers,
+      cardsByBusiness.get(businessId) || [],
+    );
+  }
+
+  const cutoff = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: dueClaims, error: claimError } = await admin
+    .from("customer_reward_claims")
+    .select("*")
+    .is("claimed_at", null)
+    .lte("earned_at", cutoff)
+    .or(`last_reminder_at.is.null,last_reminder_at.lte.${new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()}`)
+    .order("earned_at", { ascending: true });
+  if (claimError) throw claimError;
+  const claims = (dueClaims || []) as PendingRewardClaim[];
+  if (!claims.length) return 0;
+
+  const copy = [
+    (count: number) => count === 1
+      ? "Tienes 1 regalo pendiente. ¡Ven a canjearlo!"
+      : `Tienes ${count} regalos pendientes. ¡Ven a canjearlos!`,
+    (count: number) => count === 1
+      ? "Tienes un premio pendiente. ¡Te esperamos en el local!"
+      : `Tienes ${count} premios pendientes. ¡Te esperamos en el local!`,
+    (count: number) => count === 1
+      ? "¡No te olvides! Tienes 1 regalo por reclamar."
+      : `¡No te olvides! Tienes ${count} regalos por reclamar.`,
+    (count: number) => count === 1
+      ? "Tu premio te está esperando. ¡Ven a canjearlo!"
+      : `Tus ${count} premios te están esperando. ¡Ven a canjearlos!`,
+  ];
+  const customerIdsByBusiness = new Map<string, Set<string>>();
+  for (const claim of claims) {
+    customerIdsByBusiness.set(claim.business_id, new Set([
+      ...(customerIdsByBusiness.get(claim.business_id) || []),
+      claim.customer_id,
+    ]));
+  }
+
+  let sent = 0;
+  for (const [businessId, customerIdSet] of customerIdsByBusiness) {
+    const ids = [...customerIdSet];
+    const [{ data: businessCustomers }, businessRow] = await Promise.all([
+      admin.from("customers").select("*").eq("business_id", businessId).in("id", ids),
+      business(businessId),
+    ]);
+    const customerById = new Map(
+      ((businessCustomers || []) as Customer[]).map((row) => [row.id, row]),
+    );
+    // Include every pending reward in the total, even if it is not due yet.
+    const { data: pendingClaims, error: pendingError } = await admin
+      .from("customer_reward_claims")
+      .select("*")
+      .eq("business_id", businessId)
+      .in("customer_id", ids)
+      .is("claimed_at", null);
+    if (pendingError) throw pendingError;
+    const relevantClaims = (pendingClaims || []) as PendingRewardClaim[];
+    for (const customerId of ids) {
+      const customerRow = customerById.get(customerId);
+      const customerClaims = relevantClaims.filter((claim) => claim.customer_id === customerId);
+      if (!customerRow || !customerClaims.length) continue;
+      const nextCount = Math.max(...customerClaims.map((claim) => claim.reminder_count || 0)) + 1;
+      const message = copy[(nextCount - 1) % copy.length](customerClaims.length);
+      const now = new Date().toISOString();
+      await admin.from("customer_reward_claims")
+        .update({ reminder_count: nextCount, last_reminder_at: now })
+        .eq("business_id", businessId)
+        .eq("customer_id", customerId)
+        .in("reward_id", customerClaims.map((claim) => claim.reward_id))
+        .is("claimed_at", null);
+
+      await sendWebPush(
+        businessId,
+        [customerId],
+        String(businessRow.name || "Fideli"),
+        message,
+        null,
+        customerClaims[0].program_id,
+      );
+      const programIds = [...new Set(customerClaims.map((claim) => claim.program_id))];
+      await Promise.allSettled(programIds.map(async (programId) => {
+        const card = (cardsByBusiness.get(businessId) || []).find((item) => item.id === programId);
+        if (card) await updateGoogleCard(customerRow, card, message);
+      }));
+      await admin.from("customers").update({
+        wallet_message: walletNotificationValue(message),
+        updated_at: now,
+      }).eq("business_id", businessId).eq("id", customerId);
+      const { data: passes } = await admin.from("wallet_passes")
+        .select("serial_number")
+        .eq("business_id", businessId)
+        .eq("customer_id", customerId);
+      const serials = (passes || []).map((row) => String(row.serial_number));
+      if (serials.length) {
+        await admin.from("wallet_passes").update({
+          update_tag: Date.now(),
+          updated_at: now,
+        }).eq("business_id", businessId).in("serial_number", serials);
+        notifyPassesInBackground(serials);
+      }
+      sent += customerClaims.length;
+    }
+  }
+  return sent;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   const url = new URL(req.url);
@@ -2052,6 +2408,21 @@ Deno.serve(async (req) => {
       }
       const processed = await processExpirationNotifications();
       return response({ ok: true, processed });
+    }
+
+    if (req.method === "POST" && path === "/api/cron/reward-claims") {
+      const authorization = req.headers.get("authorization") || "";
+      const allowedKeys = new Set([
+        publicCronKey,
+        Deno.env.get("SUPABASE_ANON_KEY") || "",
+        Deno.env.get("SB_PUBLISHABLE_KEY") || "",
+      ]);
+      const suppliedKey = authorization.replace(/^Bearer\s+/i, "");
+      if (!suppliedKey || !allowedKeys.has(suppliedKey)) {
+        return response({ message: "No autorizado" }, 401);
+      }
+      const remindersSent = await processPendingRewardReminders();
+      return response({ ok: true, remindersSent });
     }
 
     if (req.method === "GET" && path === "/assets/icon.png") {
@@ -2260,7 +2631,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const stampAsset = path.match(/^\/assets\/stamps\/(coffee|pizza|haircut|star|heart|paw|check|gift|hamburger)\.png$/);
+    const stampAsset = path.match(/^\/assets\/stamps\/(coffee|pizza|haircut|star|heart|paw|check|gift|hamburger|latte|coffee_beans|ice_cream|hair_scissors|salon_chair|pet_collar|pet_bone|pet_bowl)\.png$/);
     if (req.method === "GET" && stampAsset) {
       await ensureImageMagick();
       const png = ImageMagick.read(MagickColors.Transparent, 96, 96, (image) => {
@@ -3245,6 +3616,10 @@ Deno.serve(async (req) => {
       if (saveError) throw saveError;
 
       const saved = savedCustomer as Customer;
+      EdgeRuntime.waitUntil(
+        syncRewardClaimsForCustomers(membership.business_id, [saved], [cardRow])
+          .catch((error) => console.error("Reward claim sync failed", error)),
+      );
       const submittedPreviousValue = Number(submitted.previousValue);
       const progressMessage = cardProgressMessage(
         cardRow,
@@ -3263,14 +3638,11 @@ Deno.serve(async (req) => {
           .eq("id", customerId);
       }
 
-      const { data: passes, error: passLookupError } = await admin
-        .from("wallet_passes")
-        .select("serial_number")
-        .eq("business_id", membership.business_id)
-        .eq("card_id", programId)
-        .or(`customer_id.eq.${customerId},serial_number.eq.${customerId}`);
-      if (passLookupError) throw passLookupError;
-      const serialNumbers = (passes || []).map((item) => item.serial_number as string);
+      const serialNumbers = await walletPassSerialsForCard(
+        membership.business_id,
+        customerId,
+        programId,
+      );
       if (serialNumbers.length) {
         const { error: passUpdateError } = await admin
           .from("wallet_passes")
@@ -3280,30 +3652,35 @@ Deno.serve(async (req) => {
         if (passUpdateError) throw passUpdateError;
       }
 
-      // La PWA recibe el cambio antes de responder; Apple y Google continúan
-      // en segundo plano usando ya el saldo confirmado en la base de datos.
-      await broadcastPwaCardUpdate(
-        membership.business_id,
-        [customerId],
-        "customer_balance_updated",
-      );
+      // Dispatch Apple and Google updates as soon as the committed balance and
+      // revision are available. Optional PWA/web push work must not hold back
+      // Wallet refresh scheduling or the merchant response.
       notifyPassesInBackground(serialNumbers);
-      const businessRow = await business(membership.business_id);
       EdgeRuntime.waitUntil(Promise.allSettled([
         updateGoogleCard(saved, cardRow, progressMessage || null),
-        ...(progressMessage
-          ? [sendWebPush(
-              membership.business_id,
-              [customerId],
-              String(businessRow.name || cardRow.name || "Fideli"),
-              progressMessage,
-              null,
-              programId,
-            )]
-          : []),
       ]).then((results) => {
         results.forEach((result) => {
           if (result.status === "rejected") console.error("Wallet progress notification failed", result.reason);
+        });
+      }));
+      EdgeRuntime.waitUntil(Promise.allSettled([
+        broadcastPwaCardUpdate(membership.business_id, [customerId], "customer_balance_updated"),
+        ...(progressMessage
+          ? [(async () => {
+              const businessRow = await business(membership.business_id);
+              await sendWebPush(
+                membership.business_id,
+                [customerId],
+                String(businessRow.name || cardRow.name || "Fideli"),
+                progressMessage,
+                null,
+                programId,
+              );
+            })()]
+          : []),
+      ]).then((results) => {
+        results.forEach((result) => {
+          if (result.status === "rejected") console.error("Post-stamp notification failed", result.reason);
         });
       }));
       return response({
@@ -3576,6 +3953,10 @@ Deno.serve(async (req) => {
           loyaltyCard(membership.business_id, programId),
         ]);
         if (currentCustomer && currentCard) {
+          EdgeRuntime.waitUntil(
+            syncRewardClaimsForCustomers(membership.business_id, [currentCustomer], [currentCard])
+              .catch((error) => console.error("Reward claim sync failed", error)),
+          );
           const submittedPreviousValue = Number(body.previousProgramValue);
           const message = cardProgressMessage(
             currentCard,
@@ -3603,16 +3984,23 @@ Deno.serve(async (req) => {
           );
         }
       }
-      let passQuery = admin
-        .from("wallet_passes")
-        .select("serial_number")
-        .eq("business_id", membership.business_id)
-        .or(`customer_id.eq.${id},serial_number.eq.${id}`);
-      if (programId) passQuery = passQuery.eq("card_id", programId);
-      const { data: passes, error: passLookupError } = await passQuery;
-      if (passLookupError) throw passLookupError;
       const now = new Date().toISOString();
-      const serialNumbers = (passes || []).map((item) => item.serial_number as string);
+      let serialNumbers: string[];
+      if (programId) {
+        serialNumbers = await walletPassSerialsForCard(
+          membership.business_id,
+          id,
+          programId,
+        );
+      } else {
+        const { data: passes, error: passLookupError } = await admin
+          .from("wallet_passes")
+          .select("serial_number")
+          .eq("business_id", membership.business_id)
+          .or(`customer_id.eq.${id},serial_number.eq.${id}`);
+        if (passLookupError) throw passLookupError;
+        serialNumbers = (passes || []).map((item) => item.serial_number as string);
+      }
       if (serialNumbers.length) {
         await admin.from("wallet_passes").update({ update_tag: Date.now(), updated_at: now }).in("serial_number", serialNumbers);
       }
@@ -3675,6 +4063,13 @@ Deno.serve(async (req) => {
         return response(result, status);
       }
 
+      await admin.from("customer_reward_claims")
+        .update({ claimed_at: new Date().toISOString() })
+        .eq("business_id", membership.business_id)
+        .eq("customer_id", customerId)
+        .eq("reward_id", rewardId)
+        .is("claimed_at", null);
+
       const { data: passes } = await admin
         .from("wallet_passes")
         .select("serial_number")
@@ -3692,6 +4087,60 @@ Deno.serve(async (req) => {
           .catch((error) => console.error("PWA reward update failed", error)),
       );
       return response({ ...result, queuedPasses: serialNumbers.length });
+    }
+
+    if (req.method === "POST" && path === "/api/rewards/claims/mark") {
+      const user = await merchantUser(req);
+      if (!user) return response({ message: "Sesión requerida" }, 401);
+      const { data: membership } = await admin
+        .from("business_members")
+        .select("business_id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
+      if (!membership) return response({ message: "Comercio no encontrado" }, 403);
+      const body = await req.json().catch(() => ({}));
+      const customerId = safeId(String(body.customerId || ""));
+      const rewardId = safeId(String(body.rewardId || ""));
+      if (!customerId || !rewardId) return response({ message: "Premio no válido" }, 400);
+      const { data: claim, error } = await admin.from("customer_reward_claims")
+        .update({ claimed_at: new Date().toISOString() })
+        .eq("business_id", membership.business_id)
+        .eq("customer_id", customerId)
+        .eq("reward_id", rewardId)
+        .is("claimed_at", null)
+        .select("customer_id,reward_id")
+        .maybeSingle();
+      if (error) throw error;
+      if (!claim) return response({ message: "El premio ya fue entregado o no está pendiente" }, 409);
+      return response({ ok: true, message: "Premio marcado como entregado" });
+    }
+
+    if (req.method === "POST" && path === "/api/rewards/claims/sync") {
+      const user = await merchantUser(req);
+      if (!user) return response({ message: "Sesión requerida" }, 401);
+      const { data: membership } = await admin
+        .from("business_members")
+        .select("business_id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
+      if (!membership) return response({ message: "Comercio no encontrado" }, 403);
+      const [{ data: customers, error: customerError }, { data: cards, error: cardError }] =
+        await Promise.all([
+          admin.from("customers").select("*")
+            .eq("business_id", membership.business_id).is("deleted_at", null),
+          admin.from("loyalty_cards").select("*")
+            .eq("business_id", membership.business_id).eq("active", true),
+        ]);
+      if (customerError) throw customerError;
+      if (cardError) throw cardError;
+      await syncRewardClaimsForCustomers(
+        membership.business_id,
+        (customers || []) as Customer[],
+        (cards || []) as LoyaltyCard[],
+      );
+      return response({ ok: true });
     }
 
     const campaignDeleteMatch = path.match(/^\/api\/campaigns\/([a-zA-Z0-9_-]+)$/);
@@ -3738,8 +4187,10 @@ Deno.serve(async (req) => {
       const targetCustomerName = String(body.targetCustomerName || "").trim().slice(0, 160);
       const sentAt = body.sentAt ? String(body.sentAt).trim().slice(0, 40) : null;
       const allowedAudiences = new Set([
-        "Todos", "Nuevos", "Frecuentes", "Regulares", "Ocasionales",
-        "En riesgo", "Inactivos", "Recuperados", "Una persona",
+        "Todos", "Nuevos", "Preocupantes", "Riesgo",
+        "Cumpleañeros de hoy", "Una persona",
+        // Keep old saved campaigns and older clients working.
+        "Frecuentes", "Regulares", "Ocasionales", "En riesgo", "Inactivos", "Recuperados",
       ]);
       if (!campaignId || !campaignName) {
         return response({ message: "La campaña necesita un nombre" }, 400);
@@ -3808,6 +4259,7 @@ Deno.serve(async (req) => {
       const notificationTitle = requestedNotificationTitle || String(businessRow.name || "Fideli").trim().slice(0, 80);
       const audience = String(body.audience || "Todos").trim();
       const targetCustomerId = safeId(String(body.targetCustomerId || ""));
+      const birthdayDate = String(body.birthdayDate || "").trim();
       const requestId = String(body.requestId || "").trim().slice(0, 180);
       const rawCampaignUrl = String(body.linkUrl || "").trim().slice(0, 2048);
       let campaignUrl: string | null = null;
@@ -3887,6 +4339,9 @@ Deno.serve(async (req) => {
       let targetIds: string[] | null = null;
       const segmentByAudience: Record<string, string> = {
         "Nuevos": "NEW",
+        "Preocupantes": "AT_RISK",
+        "Riesgo": "INACTIVE",
+        // Legacy values remain accepted for already-saved campaigns.
         "Frecuentes": "FREQUENT",
         "Regulares": "REGULAR",
         "Ocasionales": "OCCASIONAL",
@@ -3903,6 +4358,37 @@ Deno.serve(async (req) => {
           .eq("segment_code", requestedSegment);
         if (segmentError) throw segmentError;
         targetIds = (segmentTargets || []).map((item) => item.customer_id as string);
+      }
+
+      if (audience === "Cumpleañeros de hoy") {
+        const birthdayDateMatch = birthdayDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        const parsedBirthdayDate = birthdayDateMatch
+          ? new Date(`${birthdayDate}T00:00:00.000Z`)
+          : null;
+        if (
+          !birthdayDateMatch ||
+          !parsedBirthdayDate ||
+          Number.isNaN(parsedBirthdayDate.getTime()) ||
+          parsedBirthdayDate.toISOString().slice(0, 10) !== birthdayDate
+        ) {
+          return response({ message: "No se pudo determinar la fecha de cumpleaños de hoy" }, 400);
+        }
+        const monthDay = birthdayDate.slice(5);
+        const birthdayRows: { id: string; birth_date: string | null }[] = [];
+        for (let page = 0; ; page++) {
+          const { data: rows, error: birthdayError } = await admin
+            .from("customers")
+            .select("id,birth_date")
+            .eq("business_id", membership.business_id)
+            .is("deleted_at", null)
+            .range(page * 1000, page * 1000 + 999);
+          if (birthdayError) throw birthdayError;
+          birthdayRows.push(...((rows || []) as typeof birthdayRows));
+          if ((rows || []).length < 1000) break;
+        }
+        targetIds = birthdayRows
+          .filter((item) => item.birth_date?.slice(5, 10) === monthDay)
+          .map((item) => item.id);
       }
 
       let query = admin
@@ -3997,6 +4483,7 @@ Deno.serve(async (req) => {
       );
       EdgeRuntime.waitUntil(
         updateGoogleCampaign(
+          membership.business_id,
           serials,
           notificationTitle,
           message,
@@ -4005,17 +4492,13 @@ Deno.serve(async (req) => {
           console.error("Google Wallet campaign update failed", error);
         }),
       );
-      // A campaign is only reported as sent after the web-push provider has
-      // accepted the exact title from this request. Keeping this work in the
-      // background made the UI finish before the first notification had even
-      // been dispatched, which looked like the title only worked on retry.
-      await sendWebPush(
+      EdgeRuntime.waitUntil(sendWebPush(
         membership.business_id,
         serials,
         notificationTitle,
         message,
         campaignUrl,
-      );
+      ).catch((error) => console.error("Campaign web push failed", error)));
       const result = {
         ok: true,
         targetedCustomers: serials.length,
@@ -4103,6 +4586,10 @@ Deno.serve(async (req) => {
         broadcastPwaCardUpdate(membership.business_id, null, "business_updated")
           .catch((error) => console.error("PWA realtime business refresh failed", error)),
       );
+      EdgeRuntime.waitUntil(
+        syncGoogleBusinessDesign(membership.business_id)
+          .catch((error) => console.error("Google Wallet business design refresh failed", error)),
+      );
       return response({
         ok: true,
         channel: "apple_wallet",
@@ -4143,7 +4630,7 @@ Deno.serve(async (req) => {
             ? String(body.colorHex)
             : null,
           background_image_path: String(body.backgroundImagePath || "").slice(0, 240) || null,
-          stamp_icon: ["coffee", "pizza", "haircut", "star", "heart", "paw", "check", "gift", "hamburger"].includes(String(body.stampIcon))
+          stamp_icon: ["coffee", "pizza", "haircut", "star", "heart", "paw", "check", "gift", "hamburger", "latte", "coffee_beans", "ice_cream", "hair_scissors", "salon_chair", "pet_collar", "pet_bone", "pet_bowl"].includes(String(body.stampIcon))
             ? String(body.stampIcon)
             : "coffee",
           wallet_layout: body.walletLayout === "classic" ? "classic" : "poster",
@@ -4262,6 +4749,10 @@ Deno.serve(async (req) => {
       EdgeRuntime.waitUntil(
         broadcastPwaCardUpdate(membership.business_id, null, "card_updated")
           .catch((error) => console.error("PWA realtime card update failed", error)),
+      );
+      EdgeRuntime.waitUntil(
+        syncGoogleBusinessDesign(membership.business_id, id)
+          .catch((error) => console.error("Google Wallet card design refresh failed", error)),
       );
       return response({
         ok: true,

@@ -326,7 +326,7 @@ class WalletService {
         return WalletResult(
           ok: true,
           message:
-              'Icono guardado. $passes tarjeta(s) actualizadas; $queuedPasses actualización(es) en curso.',
+              'Cambios enviados a Apple y Google Wallet. $passes tarjeta(s); $queuedPasses actualización(es) en curso.',
         );
       }
       return WalletResult(
@@ -350,6 +350,7 @@ class WalletService {
     required String message,
     required String audience,
     String? targetCustomerId,
+    String? birthdayDate,
     String? linkUrl,
   }) => _runOnce('campaign:$requestId', () async {
     try {
@@ -369,6 +370,8 @@ class WalletService {
           'audience': audience,
           if (targetCustomerId != null && targetCustomerId.isNotEmpty)
             'targetCustomerId': targetCustomerId,
+          if (birthdayDate != null && birthdayDate.isNotEmpty)
+            'birthdayDate': birthdayDate,
           if (linkUrl != null && linkUrl.isNotEmpty) 'linkUrl': linkUrl,
         }),
       );
@@ -459,6 +462,68 @@ class WalletService {
       );
     }
   });
+
+  Future<WalletResult> markRewardClaimed(
+    BusinessProfile business, {
+    required String customerId,
+    required String rewardId,
+  }) => _runOnce('claim:$customerId:$rewardId', () async {
+    try {
+      final response = await _client.post(
+        Uri.parse('${_base(business)}/api/rewards/claims/mark'),
+        headers: {
+          'content-type': 'application/json',
+          if (CloudStore.instance?.accessToken case final token?)
+            'authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'customerId': customerId, 'rewardId': rewardId}),
+      );
+      Map<String, dynamic> body = const {};
+      try {
+        body = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
+      return WalletResult(
+        ok: response.statusCode >= 200 && response.statusCode < 300,
+        message:
+            body['message'] as String? ?? 'No se pudo actualizar el premio',
+      );
+    } catch (_) {
+      return const WalletResult(
+        ok: false,
+        message: 'No se pudo actualizar el premio',
+      );
+    }
+  });
+
+  Future<WalletResult> syncRewardClaims(BusinessProfile business) =>
+      _runOnce('reward-claims-sync', () async {
+        try {
+          final response = await _client.post(
+            Uri.parse('${_base(business)}/api/rewards/claims/sync'),
+            headers: {
+              'content-type': 'application/json',
+              if (CloudStore.instance?.accessToken case final token?)
+                'authorization': 'Bearer $token',
+            },
+            body: '{}',
+          );
+          Map<String, dynamic> body = const {};
+          try {
+            body = jsonDecode(response.body) as Map<String, dynamic>;
+          } catch (_) {}
+          return WalletResult(
+            ok: response.statusCode >= 200 && response.statusCode < 300,
+            message:
+                body['message'] as String? ??
+                'No se pudieron actualizar los premios',
+          );
+        } catch (_) {
+          return const WalletResult(
+            ok: false,
+            message: 'No se pudieron actualizar los premios',
+          );
+        }
+      });
 
   Future<WalletResult> syncProgram(
     BusinessProfile business,

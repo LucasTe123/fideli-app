@@ -142,6 +142,16 @@
           image.loading = "lazy";
           image.referrerPolicy = "no-referrer";
           image.addEventListener("error", () => image.remove(), { once: true });
+          image.tabIndex = 0;
+          image.setAttribute("role", "button");
+          image.setAttribute("aria-label", `Ver detalles de ${product.name}`);
+          image.addEventListener("click", () => openProduct(product));
+          image.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              openProduct(product);
+            }
+          });
           row.append(image);
         } else {
           row.append(node("div", "F", "storefront-product-image storefront-product-placeholder"));
@@ -203,19 +213,45 @@
     };
 
     const openProduct = (product) => {
-      const dialog = document.createElement('dialog'); dialog.className = 'storefront-dialog';
+      const dialog = document.createElement('dialog');
+      dialog.className = 'storefront-dialog storefront-product-dialog';
+      dialog.setAttribute('aria-labelledby', 'storefront-detail-title');
       const content = node('div', null, 'storefront-detail');
+      const top = node('div', null, 'storefront-detail-top');
+      const category = String(product.category || 'General').trim() || 'General';
+      top.append(node('small', category, 'storefront-product-category'));
+      const close = node('button', '×', 'storefront-detail-close');
+      close.type = 'button';
+      close.setAttribute('aria-label', 'Cerrar detalles del producto');
+      close.addEventListener('click', () => dialog.close());
+      top.append(close);
+      content.append(top);
       if (/^https?:\/\//i.test(product.image_url || '')) {
-        const photo = document.createElement('img'); photo.src = product.image_url;
-        photo.alt = product.name; photo.className = 'storefront-detail-image'; content.append(photo);
+        const photo = document.createElement('img');
+        photo.src = product.image_url;
+        photo.alt = product.name;
+        photo.className = 'storefront-detail-image';
+        photo.referrerPolicy = 'no-referrer';
+        content.append(photo);
       }
-      content.append(node('h2', product.name), node('p', product.description || 'Consulta al local si necesitas más información.'), node('strong', money(product.price)));
+      const title = node('h2', product.name);
+      title.id = 'storefront-detail-title';
+      content.append(title);
+      content.append(node('strong', money(product.price), 'storefront-detail-price'));
+      content.append(node('p', product.description || 'Consulta al local si necesitas más información.', 'storefront-detail-description'));
       const actions = node('div', null, 'storefront-dialog-actions');
-      const close = node('button', 'Volver', 'storefront-link secondary'); close.type = 'button'; close.onclick = () => dialog.close();
       const add = node('button', 'Agregar al carrito', 'storefront-action'); add.type = 'button';
       add.onclick = () => { const id = String(product.id); cart.set(id, Math.min(99, (cart.get(id) || 0) + 1)); dialog.close(); renderCatalog(); };
-      actions.append(close, add); content.append(actions); dialog.append(content); root.append(dialog);
-      dialog.addEventListener('close', () => dialog.remove()); dialog.showModal();
+      actions.append(add);
+      content.append(actions);
+      dialog.append(content);
+      root.append(dialog);
+      dialog.addEventListener('click', (event) => {
+        if (event.target === dialog) dialog.close();
+      });
+      dialog.addEventListener('close', () => dialog.remove(), { once: true });
+      dialog.showModal();
+      close.focus({ preventScroll: true });
     };
 
     const openCheckout = () => {

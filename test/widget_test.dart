@@ -412,9 +412,8 @@ void main() {
             body: DashboardScreen(
               onProgramsPressed: (_) {},
               onCustomersPressed: (_) {},
+              onRewardsPressed: (_) {},
               onCampaignsPressed: (_) {},
-              onBusinessPressed: (_) {},
-              onSharePressed: (_) {},
               onWalletPressed: (_) {},
               onSignOut: () async {},
             ),
@@ -433,7 +432,6 @@ void main() {
   testWidgets('el dashboard de escritorio no usa scroll interior', (
     tester,
   ) async {
-    var scannerOpened = false;
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -447,11 +445,9 @@ void main() {
             body: DashboardScreen(
               onProgramsPressed: (_) {},
               onCustomersPressed: (_) {},
+              onRewardsPressed: (_) {},
               onCampaignsPressed: (_) {},
-              onBusinessPressed: (_) {},
-              onSharePressed: (_) {},
               onWalletPressed: (_) {},
-              onScanPressed: (_) => scannerOpened = true,
               onSignOut: () async {},
             ),
           ),
@@ -490,8 +486,6 @@ void main() {
     final flatDecoration = flatCard.decoration! as BoxDecoration;
     expect(flatDecoration.border, isNull);
     expect(flatDecoration.boxShadow, isNull);
-    await tester.tap(find.text('Escanear cliente'));
-    expect(scannerOpened, isTrue);
     expect(tester.takeException(), isNull);
   });
 
@@ -623,9 +617,8 @@ void main() {
             body: DashboardScreen(
               onProgramsPressed: (_) {},
               onCustomersPressed: (_) {},
+              onRewardsPressed: (_) {},
               onCampaignsPressed: (_) {},
-              onBusinessPressed: (_) {},
-              onSharePressed: (_) {},
               onWalletPressed: (_) {},
               onSignOut: () async => signedOut = true,
             ),

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 /// Los colores configurables de las tarjetas Wallet no dependen de estos
 /// valores y continúan siendo elegidos por cada comercio.
 abstract final class FideliTheme {
+  static const coral = Color(0xFFED5264);
   static const ink = Color(0xFF1D1D21);
   static const inkSoft = Color(0xFF343438);
   static const muted = Color(0xFF77777C);
@@ -23,11 +24,11 @@ abstract final class FideliTheme {
   static ThemeData light() {
     final scheme =
         ColorScheme.fromSeed(
-          seedColor: ink,
+          seedColor: coral,
           brightness: Brightness.light,
           surface: surface,
         ).copyWith(
-          primary: ink,
+          primary: coral,
           secondary: inkSoft,
           surface: surface,
           onPrimary: Colors.white,
@@ -126,13 +127,14 @@ abstract final class FideliTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: ink,
+          backgroundColor: coral,
           foregroundColor: Colors.white,
           disabledBackgroundColor: const Color(0xFFE0E0DE),
           disabledForegroundColor: const Color(0xFF969694),
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
           shape: rounded18,
+          animationDuration: const Duration(milliseconds: 220),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -153,7 +155,7 @@ abstract final class FideliTheme {
         ),
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: ink,
+        backgroundColor: coral,
         foregroundColor: Colors.white,
         elevation: 8,
         focusElevation: 8,
@@ -183,8 +185,8 @@ abstract final class FideliTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: surfaceSoft,
-        selectedColor: ink,
-        secondarySelectedColor: ink,
+        selectedColor: coral,
+        secondarySelectedColor: coral,
         disabledColor: const Color(0xFFE7E7E5),
         labelStyle: const TextStyle(color: ink, fontWeight: FontWeight.w600),
         secondaryLabelStyle: const TextStyle(color: Colors.white),
@@ -194,7 +196,7 @@ abstract final class FideliTheme {
       switchTheme: SwitchThemeData(
         trackColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? ink
+              ? coral
               : const Color(0xFFE1E1DF),
         ),
         thumbColor: const WidgetStatePropertyAll(Colors.white),

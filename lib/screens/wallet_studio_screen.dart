@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -50,6 +51,14 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
     'check': 'Clásico',
     'gift': 'Regalo',
     'hamburger': 'Hamburguesa',
+    'latte': 'Taza de café',
+    'coffee_beans': 'Granos de café',
+    'ice_cream': 'Helado',
+    'hair_scissors': 'Tijeras',
+    'salon_chair': 'Silla de peluquería',
+    'pet_collar': 'Collar para mascota',
+    'pet_bone': 'Hueso',
+    'pet_bowl': 'Plato para mascota',
   };
 
   // =========================================================
@@ -60,6 +69,11 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
 
   bool _editing = false;
   bool _saving = false;
+  final OverlayPortalController _editOverlayController =
+      OverlayPortalController();
+  Timer? _dismissEditOverlayTimer;
+  final GlobalKey _previewCardKey = GlobalKey();
+  Rect? _editSourceRect;
 
   String? _draftColor;
   String? _draftStampIcon;
@@ -100,6 +114,7 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
 
   @override
   void dispose() {
+    _dismissEditOverlayTimer?.cancel();
     _pageAnimation.dispose();
     super.dispose();
   }
@@ -287,6 +302,12 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
     String currentWalletLayout,
   ) {
     final parsedColor = _color(currentColor);
+    _dismissEditOverlayTimer?.cancel();
+    final previewBox =
+        _previewCardKey.currentContext?.findRenderObject() as RenderBox?;
+    _editSourceRect = previewBox != null && previewBox.hasSize
+        ? previewBox.localToGlobal(Offset.zero) & previewBox.size
+        : null;
 
     setState(() {
       _editing = true;
@@ -302,6 +323,7 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
 
       _customColor = HSVColor.fromColor(parsedColor);
     });
+    _editOverlayController.show();
   }
 
   // =========================================================
@@ -321,6 +343,16 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
 
       _removeDraftBackground = false;
     });
+    _dismissEditOverlayTimer?.cancel();
+    _dismissEditOverlayTimer = Timer(const Duration(milliseconds: 520), () {
+      _editOverlayController.hide();
+      if (mounted) {
+        setState(() {
+          _dismissEditOverlayTimer = null;
+          _editSourceRect = null;
+        });
+      }
+    });
   }
 
   // =========================================================
@@ -331,7 +363,7 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
     final picked = await ImagePicker().pickImage(
       source: ImageSource.gallery,
       maxWidth: 2000,
-      imageQuality: 95,
+      imageQuality: 100,
     );
 
     if (picked == null || !mounted) return;
@@ -350,7 +382,7 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
       final result = await Navigator.of(context).push<WalletCropResult>(
         MaterialPageRoute(
           builder: (_) => WalletImageCropScreen(
-            image: Uint8List.fromList(image_lib.encodeJpg(source, quality: 90)),
+            image: Uint8List.fromList(image_lib.encodePng(source, level: 4)),
             title: walletLayout == 'classic'
                 ? 'Ajustar franja'
                 : 'Ajustar imagen completa',
@@ -592,6 +624,396 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
       );
     }
 
+    final editorControls = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 500),
+
+      switchInCurve: Curves.easeOutCubic,
+
+      switchOutCurve: Curves.easeInCubic,
+
+      transitionBuilder: (child, animation) {
+        if (desktop) {
+          final spring = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutBack,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(.28, 0),
+                end: Offset.zero,
+              ).animate(spring),
+              child: ScaleTransition(
+                alignment: Alignment.centerRight,
+                scale: Tween<double>(begin: .94, end: 1).animate(spring),
+                child: child,
+              ),
+            ),
+          );
+        }
+        return FadeTransition(
+          opacity: animation,
+          child: SizeTransition(
+            sizeFactor: animation,
+            alignment: Alignment.topCenter,
+            child: child,
+          ),
+        );
+      },
+
+      child: !_editing
+          ? const SizedBox.shrink(key: ValueKey('editor-closed'))
+          : Column(
+              key: const ValueKey('editor-open'),
+
+              children: [
+                const SizedBox(height: 20),
+
+                _StudioCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _SectionHeader(title: 'Formato de tarjeta'),
+                      const SizedBox(height: 16),
+                      _WalletLayoutToggle(
+                        value: activeWalletLayout,
+                        enabled: !_saving,
+                        onChanged: (value) {
+                          setState(() => _draftWalletLayout = value);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                _StudioCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _SectionHeader(title: 'Logo superior'),
+                      const SizedBox(height: 14),
+                      AspectRatio(
+                        aspectRatio: 16 / 5,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0x18000000)),
+                          ),
+                          child: _walletLogo == null
+                              ? const SizedBox.shrink()
+                              : Image.memory(
+                                  _walletLogo!,
+                                  fit: BoxFit.contain,
+                                  filterQuality: FilterQuality.high,
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 9),
+                      const Center(
+                        child: Text(
+                          '480 × 150 px',
+                          style: TextStyle(
+                            fontFamily: 'Poppins',
+                            fontSize: 12,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: _PrimaryButton(
+                          label: _uploadingLogo ? 'Guardando…' : 'Elegir logo',
+                          icon: Icons.photo_library_outlined,
+                          enabled: !_saving && !_uploadingLogo,
+                          onPressed: _pickWalletLogo,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                if (_selectedDesign == 'stamps') ...[
+                  // ===================================
+                  // ICONO DE SELLOS
+                  // ===================================
+                  _StudioCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+
+                      children: [
+                        const _SectionHeader(title: 'Icono de los sellos'),
+
+                        const SizedBox(height: 20),
+
+                        _StampIconMenu(
+                          icons: _stampIcons,
+                          value: _draftStampIcon ?? template.stampIcon,
+                          enabled: !_saving,
+                          onChanged: (value) {
+                            setState(() {
+                              _draftStampIcon = value;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+                ],
+
+                // =====================================
+                // CREAR COLOR PERSONALIZADO
+                // =====================================
+                _StudioCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+
+                    children: [
+                      const _SectionHeader(title: 'Color de la tarjeta'),
+
+                      const SizedBox(height: 20),
+
+                      _CustomColorEditor(
+                        color: _customColor,
+
+                        onChanged: (newColor) {
+                          setState(() {
+                            _customColor = newColor;
+
+                            // SOLO CAMBIA
+                            // EL COLOR DE LA
+                            // TARJETA.
+
+                            _draftColor = _hexFromColor(newColor.toColor());
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                // =====================================
+                // FOTO DE FONDO
+                // =====================================
+                _StudioCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+
+                    children: [
+                      const _SectionHeader(title: 'Foto de fondo'),
+
+                      const SizedBox(height: 18),
+
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 350),
+
+                        child: previewBackground == null
+                            ? Container(
+                                key: const ValueKey('no-photo'),
+
+                                width: double.infinity,
+
+                                height: 105,
+
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+
+                                  borderRadius: BorderRadius.circular(20),
+
+                                  border: Border.all(
+                                    color: const Color(0x0E000000),
+                                  ),
+                                ),
+
+                                child: const Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+
+                                  children: [
+                                    Icon(
+                                      Icons.image_outlined,
+
+                                      color: Colors.black38,
+
+                                      size: 32,
+                                    ),
+
+                                    SizedBox(height: 7),
+
+                                    Text(
+                                      'Sin imagen de fondo',
+
+                                      style: TextStyle(
+                                        fontFamily: 'Poppins',
+
+                                        fontSize: 12,
+
+                                        color: Colors.black45,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : ClipRRect(
+                                key: const ValueKey('has-photo'),
+
+                                borderRadius: BorderRadius.circular(20),
+
+                                child: SizedBox(
+                                  width: double.infinity,
+
+                                  height: 140,
+
+                                  child: Image.memory(
+                                    previewBackground,
+
+                                    fit: BoxFit.cover,
+
+                                    filterQuality: FilterQuality.high,
+                                  ),
+                                ),
+                              ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      SizedBox(
+                        width: double.infinity,
+
+                        child: _PrimaryButton(
+                          label: previewBackground == null
+                              ? 'Elegir foto'
+                              : 'Cambiar foto',
+
+                          icon: Icons.photo_library_outlined,
+
+                          enabled: !_saving,
+
+                          onPressed: () => _pickBackground(
+                            _draftWalletLayout ?? template.walletLayout,
+                          ),
+                        ),
+                      ),
+
+                      if (previewBackground != null) ...[
+                        const SizedBox(height: 10),
+
+                        SizedBox(
+                          width: double.infinity,
+
+                          child: OutlinedButton.icon(
+                            onPressed: _saving
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _draftBackground = null;
+
+                                      _draftBackground2x = null;
+
+                                      _removeDraftBackground = true;
+                                    });
+                                  },
+
+                            icon: const Icon(Icons.hide_image_outlined),
+
+                            label: const Text(
+                              'Quitar foto',
+
+                              style: TextStyle(
+                                fontFamily: 'Poppins',
+
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF382725),
+
+                              minimumSize: const Size(double.infinity, 52),
+
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(17),
+                              ),
+
+                              side: const BorderSide(color: Color(0x18000000)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                // =====================================
+                // CANCELAR / APLICAR
+                // =====================================
+                _StudioCard(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _saving ? null : _cancelEditing,
+
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 54),
+
+                            foregroundColor: const Color(0xFF382725),
+
+                            side: const BorderSide(color: Color(0x18000000)),
+
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
+
+                          child: const Text(
+                            'Cancelar',
+
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 12),
+
+                      Expanded(
+                        child: _PrimaryButton(
+                          label: 'Aplicar',
+
+                          icon: Icons.check_rounded,
+
+                          enabled: !_saving,
+
+                          onPressed: () {
+                            _applyChanges(template, programs);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+
     Widget previewPanel() => _reveal(
       1,
       _StudioCard(
@@ -634,6 +1056,7 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
                 curve: Curves.easeOutBack,
                 scale: _editing ? 1.015 : 1,
                 child: AnimatedContainer(
+                  key: _previewCardKey,
                   duration: const Duration(milliseconds: 450),
                   curve: Curves.easeOutCubic,
                   decoration: BoxDecoration(
@@ -680,657 +1103,276 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
       ),
     );
 
+    Widget focusedCard(double width, double height) => RepaintBoundary(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: .34),
+              blurRadius: 42,
+              spreadRadius: 2,
+              offset: const Offset(0, 24),
+            ),
+            BoxShadow(
+              color: _color(previewColor).withValues(alpha: .22),
+              blurRadius: 34,
+              spreadRadius: -4,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: _PassPreview(
+                businessName: data.business.name,
+                logo: _walletLogo,
+                color: _color(previewColor),
+                program: selected,
+                background: previewBackground,
+                stampIcon: activeStampIcon,
+                walletLayout: activeWalletLayout,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
     // =========================================================
     // INTERFAZ
     // =========================================================
 
-    return Align(
-      alignment: Alignment.topCenter,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 620),
-        curve: Curves.easeOutBack,
-        // Mantener ambos extremos de la animación en valores finitos evita
-        // interpolar entre BoxConstraints acotadas e infinitas al redimensionar.
-        width: studioWidth,
-        child: Stack(
-          children: [
-            PageBody(
-              maxContentWidth: desktopEditing ? 1180 : 760,
-              children: [
-                // =====================================================
-                // SOLO EL SELECTOR
-                // =====================================================
-                rightPanel(
-                  _reveal(
-                    0,
-                    _StudioCard(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          DropdownButtonFormField<String>(
-                            initialValue: _selectedDesign,
+    return OverlayPortal(
+      controller: _editOverlayController,
+      overlayLocation: OverlayChildLocation.rootOverlay,
+      overlayChildBuilder: (context) => Positioned.fill(
+        child: _WalletEditOverlay(
+          key: const ValueKey('wallet-edit-overlay'),
+          sourceRect: _editSourceRect,
+          closing: !_editing,
+          card: focusedCard(360, 488),
+          compactCard: focusedCard(190, 258),
+          controls: editorControls,
+          onDismiss: _saving ? () {} : _cancelEditing,
+        ),
+      ),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 620),
+          curve: Curves.easeOutBack,
+          // Mantener ambos extremos de la animación en valores finitos evita
+          // interpolar entre BoxConstraints acotadas e infinitas al redimensionar.
+          width: studioWidth,
+          child: Stack(
+            children: [
+              PageBody(
+                maxContentWidth: desktopEditing ? 1180 : 760,
+                children: [
+                  // =====================================================
+                  // SOLO EL SELECTOR
+                  // =====================================================
+                  rightPanel(
+                    _reveal(
+                      0,
+                      _StudioCard(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            DropdownButtonFormField<String>(
+                              initialValue: _selectedDesign,
 
-                            borderRadius: BorderRadius.circular(22),
+                              borderRadius: BorderRadius.circular(22),
 
-                            icon: const Icon(Icons.keyboard_arrow_down_rounded),
-
-                            decoration: InputDecoration(
-                              filled: true,
-
-                              fillColor: Colors.white,
-
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 17,
+                              icon: const Icon(
+                                Icons.keyboard_arrow_down_rounded,
                               ),
 
-                              labelText: 'Tipo de tarjeta',
+                              decoration: InputDecoration(
+                                filled: true,
 
-                              labelStyle: const TextStyle(
-                                fontFamily: 'Poppins',
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF5A4845),
-                              ),
+                                fillColor: Colors.white,
 
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                                borderSide: BorderSide.none,
-                              ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 17,
+                                ),
 
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                                borderSide: const BorderSide(
-                                  color: Color(0x10000000),
+                                labelText: 'Tipo de tarjeta',
+
+                                labelStyle: const TextStyle(
+                                  fontFamily: 'Poppins',
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF5A4845),
+                                ),
+
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                  borderSide: BorderSide.none,
+                                ),
+
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                  borderSide: const BorderSide(
+                                    color: Color(0x10000000),
+                                  ),
+                                ),
+
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                  borderSide: const BorderSide(
+                                    color: _uiAccent,
+                                    width: 1.5,
+                                  ),
                                 ),
                               ),
 
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                                borderSide: const BorderSide(
-                                  color: _uiAccent,
-                                  width: 1.5,
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'stamps',
+                                  child: Text(
+                                    'Tarjeta de sellos',
+                                    style: TextStyle(
+                                      fontFamily: 'Poppins',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
-                              ),
+
+                                DropdownMenuItem(
+                                  value: 'points',
+                                  child: Text(
+                                    'Tarjeta de puntos',
+                                    style: TextStyle(
+                                      fontFamily: 'Poppins',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+
+                                DropdownMenuItem(
+                                  value: 'gift',
+                                  child: Text(
+                                    'Tarjeta de regalo',
+                                    style: TextStyle(
+                                      fontFamily: 'Poppins',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+
+                                DropdownMenuItem(
+                                  value: 'membership',
+                                  child: Text(
+                                    'Membresía',
+                                    style: TextStyle(
+                                      fontFamily: 'Poppins',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+
+                              onChanged: _editing || _saving
+                                  ? null
+                                  : (value) {
+                                      if (value == null) {
+                                        return;
+                                      }
+
+                                      setState(() {
+                                        _selectedDesign = value;
+                                      });
+                                    },
                             ),
-
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'stamps',
-                                child: Text(
-                                  'Tarjeta de sellos',
-                                  style: TextStyle(
-                                    fontFamily: 'Poppins',
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-
-                              DropdownMenuItem(
-                                value: 'points',
-                                child: Text(
-                                  'Tarjeta de puntos',
-                                  style: TextStyle(
-                                    fontFamily: 'Poppins',
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-
-                              DropdownMenuItem(
-                                value: 'gift',
-                                child: Text(
-                                  'Tarjeta de regalo',
-                                  style: TextStyle(
-                                    fontFamily: 'Poppins',
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-
-                              DropdownMenuItem(
-                                value: 'membership',
-                                child: Text(
-                                  'Membresía',
-                                  style: TextStyle(
-                                    fontFamily: 'Poppins',
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-
-                            onChanged: _editing || _saving
-                                ? null
-                                : (value) {
-                                    if (value == null) {
-                                      return;
-                                    }
-
-                                    setState(() {
-                                      _selectedDesign = value;
-                                    });
-                                  },
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 14),
+                  const SizedBox(height: 14),
 
-                // =====================================================
-                // EDITAR / VISTA PREVIA
-                // =====================================================
-                rightPanel(
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 320),
+                  // =====================================================
+                  // EDITAR / VISTA PREVIA
+                  // =====================================================
+                  rightPanel(
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 320),
 
-                      switchInCurve: Curves.easeOutCubic,
+                        switchInCurve: Curves.easeOutCubic,
 
-                      switchOutCurve: Curves.easeInCubic,
+                        switchOutCurve: Curves.easeInCubic,
 
-                      child: _editing
-                          ? const _PreviewModeBadge(
-                              key: ValueKey('preview-mode'),
-                            )
-                          : _PrimaryButton(
-                              key: const ValueKey('edit-mode'),
-                              label: 'Editar',
-                              icon: Icons.edit_outlined,
+                        child: _editing
+                            ? const _PreviewModeBadge(
+                                key: ValueKey('preview-mode'),
+                              )
+                            : _PrimaryButton(
+                                key: const ValueKey('edit-mode'),
+                                label: 'Editar',
+                                icon: Icons.edit_outlined,
 
-                              enabled: !_saving,
+                                enabled: !_saving,
 
-                              onPressed: () {
-                                _startEditing(
-                                  selectedColor,
-                                  savedBackground,
-                                  template.stampIcon,
-                                  template.walletLayout,
-                                );
-                              },
+                                onPressed: () {
+                                  _startEditing(
+                                    selectedColor,
+                                    savedBackground,
+                                    template.stampIcon,
+                                    template.walletLayout,
+                                  );
+                                },
+                              ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // =====================================================
+                  // VISTA PREVIA
+                  // =====================================================
+                  if (!_editing) previewPanel(),
+
+                  // =====================================================
+                  // EDICIÓN
+                  // =====================================================
+                  if (!_editing) rightPanel(editorControls),
+
+                  // =====================================================
+                  // GUARDANDO
+                  // =====================================================
+                  rightPanel(
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 350),
+
+                      child: !_saving
+                          ? const SizedBox.shrink()
+                          : const Padding(
+                              key: ValueKey('saving'),
+
+                              padding: EdgeInsets.only(top: 18),
+
+                              child: _SavingCard(),
                             ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 32),
-
-                // =====================================================
-                // VISTA PREVIA
-                // =====================================================
-                if (!desktopEditing) previewPanel(),
-
-                // =====================================================
-                // EDICIÓN
-                // =====================================================
-                rightPanel(
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 500),
-
-                    switchInCurve: Curves.easeOutCubic,
-
-                    switchOutCurve: Curves.easeInCubic,
-
-                    transitionBuilder: (child, animation) {
-                      if (desktop) {
-                        final spring = CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeOutBack,
-                          reverseCurve: Curves.easeInCubic,
-                        );
-                        return FadeTransition(
-                          opacity: animation,
-                          child: SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(.28, 0),
-                              end: Offset.zero,
-                            ).animate(spring),
-                            child: ScaleTransition(
-                              alignment: Alignment.centerRight,
-                              scale: Tween<double>(
-                                begin: .94,
-                                end: 1,
-                              ).animate(spring),
-                              child: child,
-                            ),
-                          ),
-                        );
-                      }
-                      return FadeTransition(
-                        opacity: animation,
-                        child: SizeTransition(
-                          sizeFactor: animation,
-                          alignment: Alignment.topCenter,
-                          child: child,
-                        ),
-                      );
-                    },
-
-                    child: !_editing
-                        ? const SizedBox.shrink(key: ValueKey('editor-closed'))
-                        : Column(
-                            key: const ValueKey('editor-open'),
-
-                            children: [
-                              const SizedBox(height: 20),
-
-                              _StudioCard(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const _SectionHeader(
-                                      title: 'Logo superior',
-                                    ),
-                                    const SizedBox(height: 14),
-                                    AspectRatio(
-                                      aspectRatio: 16 / 5,
-                                      child: Container(
-                                        width: double.infinity,
-                                        padding: const EdgeInsets.all(10),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius: BorderRadius.circular(
-                                            18,
-                                          ),
-                                          border: Border.all(
-                                            color: const Color(0x18000000),
-                                          ),
-                                        ),
-                                        child: _walletLogo == null
-                                            ? const SizedBox.shrink()
-                                            : Image.memory(
-                                                _walletLogo!,
-                                                fit: BoxFit.contain,
-                                                filterQuality:
-                                                    FilterQuality.high,
-                                              ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 9),
-                                    const Center(
-                                      child: Text(
-                                        '480 × 150 px',
-                                        style: TextStyle(
-                                          fontFamily: 'Poppins',
-                                          fontSize: 12,
-                                          color: Colors.black54,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: _PrimaryButton(
-                                        label: _uploadingLogo
-                                            ? 'Guardando…'
-                                            : 'Elegir logo',
-                                        icon: Icons.photo_library_outlined,
-                                        enabled: !_saving && !_uploadingLogo,
-                                        onPressed: _pickWalletLogo,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              const SizedBox(height: 18),
-
-                              if (_selectedDesign == 'stamps') ...[
-                                // ===================================
-                                // ICONO DE SELLOS
-                                // ===================================
-                                _StudioCard(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-
-                                    children: [
-                                      const _SectionHeader(
-                                        title: 'Icono de los sellos',
-                                      ),
-
-                                      const SizedBox(height: 20),
-
-                                      _StampIconMenu(
-                                        icons: _stampIcons,
-                                        value:
-                                            _draftStampIcon ??
-                                            template.stampIcon,
-                                        enabled: !_saving,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _draftStampIcon = value;
-                                          });
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                                const SizedBox(height: 18),
-                              ],
-
-                              // =====================================
-                              // CREAR COLOR PERSONALIZADO
-                              // =====================================
-                              _StudioCard(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-
-                                  children: [
-                                    const _SectionHeader(
-                                      title: 'Color de la tarjeta',
-                                    ),
-
-                                    const SizedBox(height: 20),
-
-                                    _CustomColorEditor(
-                                      color: _customColor,
-
-                                      onChanged: (newColor) {
-                                        setState(() {
-                                          _customColor = newColor;
-
-                                          // SOLO CAMBIA
-                                          // EL COLOR DE LA
-                                          // TARJETA.
-
-                                          _draftColor = _hexFromColor(
-                                            newColor.toColor(),
-                                          );
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              const SizedBox(height: 18),
-
-                              // =====================================
-                              // FOTO DE FONDO
-                              // =====================================
-                              _StudioCard(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-
-                                  children: [
-                                    const _SectionHeader(
-                                      title: 'Foto de fondo',
-                                    ),
-
-                                    const SizedBox(height: 18),
-
-                                    AnimatedSwitcher(
-                                      duration: const Duration(
-                                        milliseconds: 350,
-                                      ),
-
-                                      child: previewBackground == null
-                                          ? Container(
-                                              key: const ValueKey('no-photo'),
-
-                                              width: double.infinity,
-
-                                              height: 105,
-
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-
-                                                borderRadius:
-                                                    BorderRadius.circular(20),
-
-                                                border: Border.all(
-                                                  color: const Color(
-                                                    0x0E000000,
-                                                  ),
-                                                ),
-                                              ),
-
-                                              child: const Column(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-
-                                                children: [
-                                                  Icon(
-                                                    Icons.image_outlined,
-
-                                                    color: Colors.black38,
-
-                                                    size: 32,
-                                                  ),
-
-                                                  SizedBox(height: 7),
-
-                                                  Text(
-                                                    'Sin imagen de fondo',
-
-                                                    style: TextStyle(
-                                                      fontFamily: 'Poppins',
-
-                                                      fontSize: 12,
-
-                                                      color: Colors.black45,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            )
-                                          : ClipRRect(
-                                              key: const ValueKey('has-photo'),
-
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-
-                                              child: SizedBox(
-                                                width: double.infinity,
-
-                                                height: 140,
-
-                                                child: Image.memory(
-                                                  previewBackground,
-
-                                                  fit: BoxFit.cover,
-
-                                                  filterQuality:
-                                                      FilterQuality.high,
-                                                ),
-                                              ),
-                                            ),
-                                    ),
-
-                                    const SizedBox(height: 16),
-
-                                    SizedBox(
-                                      width: double.infinity,
-
-                                      child: _PrimaryButton(
-                                        label: previewBackground == null
-                                            ? 'Elegir foto'
-                                            : 'Cambiar foto',
-
-                                        icon: Icons.photo_library_outlined,
-
-                                        enabled: !_saving,
-
-                                        onPressed: () => _pickBackground(
-                                          _draftWalletLayout ??
-                                              template.walletLayout,
-                                        ),
-                                      ),
-                                    ),
-
-                                    if (previewBackground != null) ...[
-                                      const SizedBox(height: 10),
-
-                                      SizedBox(
-                                        width: double.infinity,
-
-                                        child: OutlinedButton.icon(
-                                          onPressed: _saving
-                                              ? null
-                                              : () {
-                                                  setState(() {
-                                                    _draftBackground = null;
-
-                                                    _draftBackground2x = null;
-
-                                                    _removeDraftBackground =
-                                                        true;
-                                                  });
-                                                },
-
-                                          icon: const Icon(
-                                            Icons.hide_image_outlined,
-                                          ),
-
-                                          label: const Text(
-                                            'Quitar foto',
-
-                                            style: TextStyle(
-                                              fontFamily: 'Poppins',
-
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: const Color(
-                                              0xFF382725,
-                                            ),
-
-                                            minimumSize: const Size(
-                                              double.infinity,
-                                              52,
-                                            ),
-
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(17),
-                                            ),
-
-                                            side: const BorderSide(
-                                              color: Color(0x18000000),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-
-                              const SizedBox(height: 18),
-
-                              // =====================================
-                              // CANCELAR / APLICAR
-                              // =====================================
-                              _StudioCard(
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: OutlinedButton(
-                                        onPressed: _saving
-                                            ? null
-                                            : _cancelEditing,
-
-                                        style: OutlinedButton.styleFrom(
-                                          minimumSize: const Size(
-                                            double.infinity,
-                                            54,
-                                          ),
-
-                                          foregroundColor: const Color(
-                                            0xFF382725,
-                                          ),
-
-                                          side: const BorderSide(
-                                            color: Color(0x18000000),
-                                          ),
-
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              18,
-                                            ),
-                                          ),
-                                        ),
-
-                                        child: const Text(
-                                          'Cancelar',
-
-                                          style: TextStyle(
-                                            fontFamily: 'Poppins',
-
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-
-                                    const SizedBox(width: 12),
-
-                                    Expanded(
-                                      child: _PrimaryButton(
-                                        label: 'Aplicar',
-
-                                        icon: Icons.check_rounded,
-
-                                        enabled: !_saving,
-
-                                        onPressed: () {
-                                          _applyChanges(template, programs);
-                                        },
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-
-                // =====================================================
-                // GUARDANDO
-                // =====================================================
-                rightPanel(
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 350),
-
-                    child: !_saving
-                        ? const SizedBox.shrink()
-                        : const Padding(
-                            key: ValueKey('saving'),
-
-                            padding: EdgeInsets.only(top: 18),
-
-                            child: _SavingCard(),
-                          ),
-                  ),
-                ),
-
-                const SizedBox(height: 30),
-              ],
-            ),
-            if (desktopEditing)
-              Positioned(
-                key: const ValueKey('desktop-pinned-preview'),
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 592,
-                child: Center(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-                    child: previewPanel(),
-                  ),
-                ),
+                  const SizedBox(height: 30),
+                ],
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1344,6 +1386,163 @@ class _WalletStudioScreenState extends State<WalletStudioScreen>
     final value = int.tryParse(hex.replaceFirst('#', ''), radix: 16);
 
     return value == null ? _uiAccent : Color(0xFF000000 | value);
+  }
+}
+
+// ===========================================================
+// CAPA FLOTANTE DE EDICIÓN
+// ===========================================================
+
+class _WalletEditOverlay extends StatelessWidget {
+  const _WalletEditOverlay({
+    super.key,
+    required this.sourceRect,
+    required this.closing,
+    required this.card,
+    required this.compactCard,
+    required this.controls,
+    required this.onDismiss,
+  });
+
+  final Rect? sourceRect;
+  final bool closing;
+  final Widget card;
+  final Widget compactCard;
+  final Widget controls;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final safe = MediaQuery.paddingOf(context);
+        final usable = Rect.fromLTWH(
+          safe.left,
+          safe.top,
+          math.max(0.0, constraints.maxWidth - safe.horizontal),
+          math.max(0.0, constraints.maxHeight - safe.vertical),
+        );
+        final wide = usable.width >= 960;
+
+        late final Rect targetCardRect;
+        late final Rect targetControlsRect;
+        if (wide) {
+          final cardWidth = math.min(390.0, usable.width * .31);
+          final cardHeight = cardWidth * 488 / 360;
+          final controlsWidth = math.min(720.0, usable.width * .48);
+          final gap = math.min(44.0, usable.width * .035);
+          final groupWidth = cardWidth + gap + controlsWidth;
+          final left = usable.left + (usable.width - groupWidth) / 2;
+          final top = usable.top + (usable.height - cardHeight) / 2;
+          targetCardRect = Rect.fromLTWH(left, top, cardWidth, cardHeight);
+          targetControlsRect = Rect.fromLTWH(
+            left + cardWidth + gap,
+            usable.top + usable.height * .06,
+            controlsWidth,
+            usable.height * .88,
+          );
+        } else {
+          final cardWidth = math.min(190.0, usable.width - 32);
+          final cardHeight = cardWidth * 488 / 360;
+          targetCardRect = Rect.fromLTWH(
+            usable.left + (usable.width - cardWidth) / 2,
+            usable.top + 10,
+            cardWidth,
+            cardHeight,
+          );
+          final controlsTop = targetCardRect.bottom + 14;
+          targetControlsRect = Rect.fromLTWH(
+            usable.left + 12,
+            controlsTop,
+            usable.width - 24,
+            math.max(100.0, usable.bottom - controlsTop - 10),
+          );
+        }
+
+        final origin = sourceRect ?? targetCardRect;
+        final destination = closing ? origin : targetCardRect;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onDismiss,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: closing ? 0 : .64),
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, opacity, child) =>
+                      Opacity(opacity: opacity, child: child),
+                  child: const ColoredBox(color: Color(0xFF100C14)),
+                ),
+              ),
+            ),
+            TweenAnimationBuilder<Rect>(
+              tween: _RectFlightTween(
+                begin: closing ? targetCardRect : origin,
+                end: destination,
+              ),
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeOutBack,
+              builder: (context, rect, child) => Positioned.fromRect(
+                rect: rect,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {},
+                  child: child,
+                ),
+              ),
+              child: wide ? card : compactCard,
+            ),
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: closing ? 0 : 1),
+              duration: const Duration(milliseconds: 420),
+              curve: Curves.easeOutBack,
+              builder: (context, progress, child) => Positioned.fromRect(
+                rect: targetControlsRect,
+                child: Opacity(
+                  // easeOutBack overshoots 1 briefly; Opacity only accepts
+                  // values in [0, 1], while the slide can keep its spring.
+                  opacity: progress.clamp(0.0, 1.0).toDouble(),
+                  child: Transform.translate(
+                    offset: Offset((1 - progress) * 90, 0),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {},
+                      child: child,
+                    ),
+                  ),
+                ),
+              ),
+              child: _floatingControls(controls, wide),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _floatingControls(Widget child, bool wide) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 720),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9F7FA),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white.withValues(alpha: .8)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .22),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(18, wide ? 8 : 4, 18, 20),
+        child: child,
+      ),
+    );
   }
 }
 
@@ -1951,11 +2150,28 @@ class _StampOptionState extends State<_StampOption> {
 }
 
 class _StampGlyph extends StatelessWidget {
-  const _StampGlyph({required this.icon, required this.color, this.size = 32});
+  const _StampGlyph({
+    required this.icon,
+    required this.color,
+    this.size = 32,
+    this.inactive = false,
+  });
 
   final String icon;
   final Color color;
   final double size;
+  final bool inactive;
+
+  static const _illustratedIcons = {
+    'latte',
+    'coffee_beans',
+    'ice_cream',
+    'hair_scissors',
+    'salon_chair',
+    'pet_collar',
+    'pet_bone',
+    'pet_bowl',
+  };
 
   IconData get _data => switch (icon) {
     'pizza' => PhosphorIconsRegular.pizza,
@@ -1970,8 +2186,19 @@ class _StampGlyph extends StatelessWidget {
   };
 
   @override
-  Widget build(BuildContext context) =>
-      PhosphorIcon(_data, size: size, color: color);
+  Widget build(BuildContext context) {
+    if (_illustratedIcons.contains(icon)) {
+      return Image.asset(
+        'assets/images/stamps/$icon${inactive ? '_inactive' : ''}.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) =>
+            PhosphorIcon(_data, size: size, color: color),
+      );
+    }
+    return PhosphorIcon(_data, size: size, color: color);
+  }
 }
 
 // Kept as a fallback renderer for devices that cannot load the icon font.
@@ -2824,6 +3051,7 @@ class _PassPreview extends StatelessWidget {
                 icon: stampIcon,
                 color: Colors.white.withValues(alpha: active ? 1 : 0.45),
                 size: 43,
+                inactive: !active,
               ),
             );
           }),
@@ -2968,6 +3196,7 @@ class _ClassicStampPreview extends StatelessWidget {
                     alpha: index < filled ? 1 : .48,
                   ),
                   size: 35,
+                  inactive: index >= filled,
                 );
               }),
             ),
@@ -3044,6 +3273,14 @@ class _Artwork extends StatelessWidget {
 // ===========================================================
 // VALORES
 // ===========================================================
+
+class _RectFlightTween extends Tween<Rect> {
+  _RectFlightTween({required Rect begin, required Rect end})
+    : super(begin: begin, end: end);
+
+  @override
+  Rect lerp(double t) => Rect.lerp(begin!, end!, t)!;
+}
 
 class _PassValue extends StatelessWidget {
   const _PassValue(this.label, this.value, {this.large = false});

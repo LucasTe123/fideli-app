@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 
+import '../models/app_data.dart';
 import '../services/cloud_store.dart';
+import '../state/app_scope.dart';
 
 /// Presentación y acceso visual de Fideli.
 ///
@@ -11,10 +16,14 @@ class AuthFlowScreen extends StatefulWidget {
     super.key,
     required this.onAuthenticated,
     this.hasSavedSession = false,
+    this.savedBusiness,
+    this.savedBusinessMark,
   });
 
   final Future<void> Function() onAuthenticated;
   final bool hasSavedSession;
+  final BusinessProfile? savedBusiness;
+  final Uint8List? savedBusinessMark;
 
   @override
   State<AuthFlowScreen> createState() => _AuthFlowScreenState();
@@ -22,15 +31,19 @@ class AuthFlowScreen extends StatefulWidget {
 
 class _AuthFlowScreenState extends State<AuthFlowScreen>
     with TickerProviderStateMixin {
-  static const _wine = Color(0xFF1D1D21);
+  static const _wine = Color(0xFF493354);
   static const _cream = Colors.white;
-  static const _gold = Color(0xFFB7B7B3);
+  static const _gold = Color(0xFFF5B51B);
+  static const _coral = Color(0xFFED5264);
+  static const _ink = Color(0xFF26242B);
+  static const _paper = Color(0xFFF8F8F7);
+  static const _muted = Color(0xFF77747C);
 
   late final AnimationController _introController;
   late final AnimationController _transitionController;
   late final Animation<double> _introFade;
   bool _introStarted = false;
-  bool _showingLogin = false;
+  bool _showingLogin = true;
   bool _enteringSavedSession = false;
 
   @override
@@ -43,7 +56,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
     _transitionController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
-    );
+    )..value = 1;
     _introFade = CurvedAnimation(
       parent: _introController,
       curve: Curves.easeInOutCubic,
@@ -100,27 +113,30 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
     required double panelProgress,
     required double formProgress,
   }) {
-    final artworkWidth = (width * .56).clamp(560.0, 650.0).toDouble();
-    final artworkHeight = artworkWidth * .83;
+    final artworkWidth = (width * .68).clamp(640.0, 880.0).toDouble();
+    final artworkHeight = artworkWidth * .82;
+    final panelWidth = (width * .40).clamp(360.0, 520.0).toDouble();
+    final panelHeight = (height * .72).clamp(0.0, 680.0).toDouble();
     final artworkLeft = _lerp(
       (width - artworkWidth) / 2,
       (width * .5 - artworkWidth) / 2,
       progress,
     );
     final brandLeft = _lerp(width * .31, width * .055, progress);
-    final panelLeft = _lerp(width + 48, width * .515, panelProgress);
+    final panelLeft = _lerp(width + 48, width - panelWidth - 24, panelProgress);
+    final panelTop = (height - panelHeight) / 2;
 
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Positioned(
           left: artworkLeft,
-          top: -height * .035,
+          top: -height * .025,
           width: artworkWidth,
           height: artworkHeight,
           child: IgnorePointer(
             child: Lottie.asset(
-              'assets/animations/friends_at_a_cafe.json',
+              'assets/animations/my_animation_tes.json',
               fit: BoxFit.contain,
               repeat: true,
               onLoaded: (_) => _startIntro(),
@@ -131,7 +147,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
           const Center(child: CircularProgressIndicator(color: _gold)),
         Positioned(
           left: brandLeft,
-          top: height * .58,
+          top: height * .62,
           child: const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -139,20 +155,20 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
                 'Fideli',
                 style: TextStyle(
                   fontFamily: 'Poppins',
-                  color: _wine,
-                  fontSize: 50,
+                  color: _coral,
+                  fontSize: 74,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: -4,
+                  letterSpacing: -5,
                   height: 1,
                 ),
               ),
-              SizedBox(height: 9),
+              SizedBox(height: 10),
               Text(
                 'Tu lealtad lo vale.',
                 style: TextStyle(
                   fontFamily: 'FideliScript',
                   color: _wine,
-                  fontSize: 38,
+                  fontSize: 54,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -179,7 +195,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
                         : _continueFromWelcome,
                     style: FilledButton.styleFrom(
                       minimumSize: Size(width * .28, 58),
-                      backgroundColor: _wine,
+                      backgroundColor: _coral,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       textStyle: const TextStyle(
@@ -210,9 +226,9 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
         Positioned(
           key: const ValueKey('desktop-login-panel'),
           left: panelLeft,
-          top: 24,
-          bottom: 24,
-          width: width * .455,
+          top: panelTop,
+          width: panelWidth,
+          height: panelHeight,
           child: DecoratedBox(
             decoration: const BoxDecoration(
               color: _wine,
@@ -229,7 +245,14 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
               opacity: formProgress,
               child: Transform.translate(
                 offset: Offset(30 * (1 - formProgress), 0),
-                child: _LoginForm(onAuthenticated: widget.onAuthenticated),
+                child: _LoginForm(
+                  onAuthenticated: widget.onAuthenticated,
+                  hasSavedSession: widget.hasSavedSession,
+                  onContinueSavedSession: _continueFromWelcome,
+                  savedSessionLoading: _enteringSavedSession,
+                  savedBusiness: widget.savedBusiness,
+                  savedBusinessMark: widget.savedBusinessMark,
+                ),
               ),
             ),
           ),
@@ -243,7 +266,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
     final desktop = MediaQuery.sizeOf(context).width >= 900;
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      backgroundColor: Colors.white,
+      backgroundColor: _AuthFlowScreenState._paper,
       body: SafeArea(
         bottom: false,
         child: GestureDetector(
@@ -290,32 +313,12 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
                           );
                         }
 
-                        final animationTop = _lerp(
-                          -height * 0.07,
-                          -height * 0.02,
-                          progress,
-                        );
-                        final animationLeft = _lerp(
-                          -width * 0.27,
-                          width * 0.05,
-                          progress,
-                        );
-                        final animationWidth = _lerp(
-                          width * 1.55,
-                          width * 0.90,
-                          progress,
-                        );
-                        final animationHeight = _lerp(
-                          height * 0.64,
-                          height * 0.34,
-                          progress,
-                        );
+                        final animationTop = -height * 0.02;
+                        final animationLeft = -width * 0.12;
+                        final animationWidth = width * 1.24;
+                        final animationHeight = height * 0.60;
 
-                        final panelTop = _lerp(
-                          height + 30,
-                          height * 0.29,
-                          panelProgress,
-                        );
+                        final panelTop = height * 0.48;
 
                         return Stack(
                           clipBehavior: Clip.none,
@@ -327,7 +330,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
                               height: animationHeight,
                               child: IgnorePointer(
                                 child: Lottie.asset(
-                                  'assets/animations/friends_at_a_cafe.json',
+                                  'assets/animations/my_animation_tes.json',
                                   fit: BoxFit.contain,
                                   repeat: true,
                                   onLoaded: (_) => _startIntro(),
@@ -342,7 +345,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
                               left: width * 0.07,
                               right: width * 0.07,
                               top: panelTop,
-                              height: height * 0.78,
+                              height: height - panelTop,
                               child: DecoratedBox(
                                 decoration: const BoxDecoration(
                                   color: _wine,
@@ -363,6 +366,14 @@ class _AuthFlowScreenState extends State<AuthFlowScreen>
                                     offset: Offset(0, 20 * (1 - formProgress)),
                                     child: _LoginForm(
                                       onAuthenticated: widget.onAuthenticated,
+                                      hasSavedSession: widget.hasSavedSession,
+                                      onContinueSavedSession:
+                                          _continueFromWelcome,
+                                      savedSessionLoading:
+                                          _enteringSavedSession,
+                                      savedBusiness: widget.savedBusiness,
+                                      savedBusinessMark:
+                                          widget.savedBusinessMark,
                                     ),
                                   ),
                                 ),
@@ -419,28 +430,28 @@ class _WelcomeContent extends StatelessWidget {
       children: [
         Positioned(
           left: width * 0.08,
-          top: height * 0.51,
+          top: height * 0.48,
           child: Text(
             'Fideli',
             style: const TextStyle(
               fontFamily: 'Poppins',
-              color: _AuthFlowScreenState._wine,
-              fontSize: 50,
+              color: _AuthFlowScreenState._coral,
+              fontSize: 72,
               fontWeight: FontWeight.w800,
-              letterSpacing: -4,
+              letterSpacing: -5,
               height: 1,
             ),
           ),
         ),
         Positioned(
           left: width * 0.08,
-          top: height * 0.58,
+          top: height * 0.59,
           child: Text(
             'Tu lealtad lo vale.',
             style: const TextStyle(
               fontFamily: 'FideliScript',
               color: _AuthFlowScreenState._wine,
-              fontSize: 39,
+              fontSize: 52,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -457,7 +468,7 @@ class _WelcomeContent extends StatelessWidget {
             onPressed: loading ? null : onContinue,
             style: FilledButton.styleFrom(
               minimumSize: Size(width * 0.39, 58),
-              backgroundColor: _AuthFlowScreenState._wine,
+              backgroundColor: _AuthFlowScreenState._coral,
               foregroundColor: Colors.white,
               elevation: 0,
               textStyle: const TextStyle(
@@ -518,9 +529,21 @@ class _PageIndicator extends StatelessWidget {
 }
 
 class _LoginForm extends StatefulWidget {
-  const _LoginForm({required this.onAuthenticated});
+  const _LoginForm({
+    required this.onAuthenticated,
+    required this.hasSavedSession,
+    required this.onContinueSavedSession,
+    required this.savedSessionLoading,
+    this.savedBusiness,
+    this.savedBusinessMark,
+  });
 
   final Future<void> Function() onAuthenticated;
+  final bool hasSavedSession;
+  final VoidCallback onContinueSavedSession;
+  final bool savedSessionLoading;
+  final BusinessProfile? savedBusiness;
+  final Uint8List? savedBusinessMark;
 
   @override
   State<_LoginForm> createState() => _LoginFormState();
@@ -531,9 +554,53 @@ class _LoginFormState extends State<_LoginForm> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _creatingAccount = false;
+  bool _useAnotherAccount = false;
   bool _loading = false;
   String? _message;
   bool _messageIsError = false;
+  Uint8List? _businessMark;
+  String _savedBusinessName = '';
+
+  @override
+  void initState() {
+    super.initState();
+    final savedBusiness = widget.savedBusiness;
+    _businessMark = widget.savedBusinessMark;
+    if (savedBusiness != null) {
+      _savedBusinessName = savedBusiness.name;
+    }
+    if (widget.hasSavedSession && _businessMark == null) {
+      unawaited(_loadSavedAccountBranding(savedBusiness));
+    }
+  }
+
+  Future<void> _loadSavedAccountBranding(BusinessProfile? savedBusiness) async {
+    final cloud = CloudStore.instance;
+    if (cloud == null) {
+      return;
+    }
+    try {
+      final branding = savedBusiness == null
+          ? await cloud.loadBusinessBranding()
+          : {
+              'name': savedBusiness.name,
+              'logoPath': savedBusiness.walletLogoPath,
+              'iconPath': savedBusiness.walletIconPath,
+            };
+      if (branding == null) return;
+      final mark = await cloud.downloadBusinessMark(
+        logoPath: branding['logoPath'] ?? '',
+        iconPath: branding['iconPath'] ?? '',
+      );
+      if (!mounted) return;
+      setState(() {
+        _savedBusinessName = branding['name'] ?? '';
+        _businessMark = mark;
+      });
+    } catch (_) {
+      // El acceso guardado sigue funcionando aunque no se pueda cargar el logo.
+    }
+  }
 
   @override
   void dispose() {
@@ -638,10 +705,34 @@ class _LoginFormState extends State<_LoginForm> {
     }
   }
 
+  Future<void> _removeSavedAccount() async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _message = null;
+    });
+    try {
+      await CloudStore.instance?.signOutRestaurant();
+      if (!mounted) return;
+      setState(() => _useAnotherAccount = true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = _friendlyError(error);
+        _messageIsError = true;
+      });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final business = AppScope.of(context).data.business;
+    final showSavedAccount =
+        widget.hasSavedSession && !_useAnotherAccount && !_creatingAccount;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(28, 28, 28, 110),
+      padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -664,38 +755,178 @@ class _LoginFormState extends State<_LoginForm> {
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontFamily: 'Poppins',
-              color: Color(0xFFF2DEDA),
+              color: Color(0xFFEAE5ED),
               fontSize: 14,
             ),
           ),
-          const SizedBox(height: 24),
-          if (_creatingAccount) ...[
+          const SizedBox(height: 26),
+          if (showSavedAccount) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: widget.savedSessionLoading || _loading
+                        ? null
+                        : widget.onContinueSavedSession,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(76),
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0x99FFFFFF)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      textStyle: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: SizedBox.square(
+                            dimension: 50,
+                            child: _businessMark == null
+                                ? const ColoredBox(
+                                    color: Color(0xFFFCE8EB),
+                                    child: Icon(
+                                      Icons.storefront_rounded,
+                                      color: _AuthFlowScreenState._coral,
+                                      size: 26,
+                                    ),
+                                  )
+                                : Image.memory(
+                                    _businessMark!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => const ColoredBox(
+                                      color: Color(0xFFFCE8EB),
+                                      child: Icon(
+                                        Icons.storefront_rounded,
+                                        color: _AuthFlowScreenState._coral,
+                                        size: 26,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(
+                            _savedBusinessName.isNotEmpty
+                                ? _savedBusinessName
+                                : business.name.isEmpty
+                                ? 'Cuenta guardada'
+                                : business.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.left,
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
+                        if (widget.savedSessionLoading)
+                          const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: Colors.white,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                IconButton(
+                  tooltip: 'Quitar cuenta guardada',
+                  onPressed: widget.savedSessionLoading || _loading
+                      ? null
+                      : _removeSavedAccount,
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(54, 54),
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0x99FFFFFF)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            OutlinedButton(
+              onPressed: _loading
+                  ? null
+                  : () => setState(() {
+                      _useAnotherAccount = true;
+                      _message = null;
+                    }),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(58),
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Color(0x99FFFFFF)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                textStyle: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              child: const Text('Iniciar con otra cuenta'),
+            ),
+          ] else ...[
+            if (widget.hasSavedSession &&
+                _useAnotherAccount &&
+                !_creatingAccount)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(() {
+                    _useAnotherAccount = false;
+                    _message = null;
+                  }),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.zero,
+                  ),
+                  icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                  label: const Text('Volver a la cuenta guardada'),
+                ),
+              ),
+            if (_creatingAccount) ...[
+              _AuthField(
+                controller: _restaurantController,
+                label: 'Nombre del restaurante',
+                icon: Icons.storefront_outlined,
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 13),
+            ],
             _AuthField(
-              controller: _restaurantController,
-              label: 'Nombre del restaurante',
-              icon: Icons.storefront_outlined,
+              controller: _emailController,
+              label: 'Correo electrónico',
+              icon: Icons.mail_outline_rounded,
+              keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
+              autocorrect: false,
             ),
             const SizedBox(height: 13),
+            _AuthField(
+              controller: _passwordController,
+              label: 'Contraseña',
+              icon: Icons.lock_outline_rounded,
+              obscureText: true,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+              autocorrect: false,
+            ),
           ],
-          _AuthField(
-            controller: _emailController,
-            label: 'Correo electrónico',
-            icon: Icons.mail_outline_rounded,
-            keyboardType: TextInputType.emailAddress,
-            textInputAction: TextInputAction.next,
-            autocorrect: false,
-          ),
-          const SizedBox(height: 13),
-          _AuthField(
-            controller: _passwordController,
-            label: 'Contraseña',
-            icon: Icons.lock_outline_rounded,
-            obscureText: true,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => _submit(),
-            autocorrect: false,
-          ),
           if (_message != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -710,39 +941,72 @@ class _LoginFormState extends State<_LoginForm> {
               ),
             ),
           ],
-          const SizedBox(height: 22),
-          FilledButton(
-            onPressed: _loading ? null : _submit,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(56),
-              backgroundColor: Colors.white,
-              foregroundColor: _AuthFlowScreenState._wine,
-              disabledBackgroundColor: const Color(0x99FFFFFF),
-              disabledForegroundColor: _AuthFlowScreenState._wine,
-              textStyle: const TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+          if (!showSavedAccount) ...[
+            const SizedBox(height: 22),
+            FilledButton(
+              onPressed: _loading ? null : _submit,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(58),
+                backgroundColor: _AuthFlowScreenState._gold,
+                foregroundColor: _AuthFlowScreenState._ink,
+                disabledBackgroundColor: const Color(0x99FFFFFF),
+                disabledForegroundColor: _AuthFlowScreenState._ink,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                textStyle: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
+              child: _loading
+                  ? const SizedBox.square(
+                      dimension: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: _AuthFlowScreenState._ink,
+                      ),
+                    )
+                  : Text(_creatingAccount ? 'Crear cuenta' : 'Entrar a Fideli'),
             ),
-            child: _loading
-                ? const SizedBox.square(
-                    dimension: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: _AuthFlowScreenState._wine,
-                    ),
-                  )
-                : Text(_creatingAccount ? 'Crear cuenta' : 'Entrar a Fideli'),
-          ),
-          TextButton(
+          ],
+          SizedBox(height: showSavedAccount ? 26 : 18),
+          OutlinedButton(
             onPressed: _loading
                 ? null
                 : () => setState(() {
-                    _creatingAccount = !_creatingAccount;
+                    if (_creatingAccount) {
+                      _creatingAccount = false;
+                    } else if (showSavedAccount) {
+                      _creatingAccount = true;
+                      _useAnotherAccount = true;
+                    } else {
+                      _creatingAccount = false;
+                      _useAnotherAccount = false;
+                    }
                     _message = null;
                   }),
-            style: TextButton.styleFrom(foregroundColor: Colors.white),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+              foregroundColor: Colors.white,
+              backgroundColor: showSavedAccount || !_creatingAccount
+                  ? _AuthFlowScreenState._coral
+                  : Colors.transparent,
+              side: BorderSide(
+                color: showSavedAccount || !_creatingAccount
+                    ? _AuthFlowScreenState._coral
+                    : const Color(0x99FFFFFF),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              textStyle: const TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             child: Text(
               _creatingAccount
                   ? 'Ya tengo una cuenta'
@@ -788,20 +1052,20 @@ class _AuthField extends StatelessWidget {
       enableSuggestions: !obscureText,
       style: const TextStyle(
         fontFamily: 'Poppins',
-        color: Color(0xFF2F201E),
+        color: _AuthFlowScreenState._ink,
         fontSize: 14,
       ),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(
           fontFamily: 'Poppins',
-          color: Color(0xFF5F514F),
+          color: _AuthFlowScreenState._muted,
         ),
         floatingLabelStyle: const TextStyle(
           fontFamily: 'Poppins',
           color: _AuthFlowScreenState._wine,
         ),
-        prefixIcon: Icon(icon, color: const Color(0xFF5F514F)),
+        prefixIcon: Icon(icon, color: _AuthFlowScreenState._wine),
         filled: true,
         fillColor: _AuthFlowScreenState._cream,
         contentPadding: const EdgeInsets.symmetric(
@@ -810,16 +1074,16 @@ class _AuthField extends StatelessWidget {
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: Color(0xFFE1D8CE)),
+          borderSide: const BorderSide(color: Color(0xFFE8E6E9)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: Color(0xFFE1D8CE)),
+          borderSide: const BorderSide(color: Color(0xFFE8E6E9)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
           borderSide: const BorderSide(
-            color: _AuthFlowScreenState._wine,
+            color: _AuthFlowScreenState._coral,
             width: 1.5,
           ),
         ),

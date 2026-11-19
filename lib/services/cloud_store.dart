@@ -87,6 +87,18 @@ class CloudStore {
     }
   }
 
+  Future<List<Map<String, dynamic>>> loadPendingRewardClaims() async =>
+      (await _client
+              .from('customer_reward_claims')
+              .select(
+                'customer_id,reward_id,program_id,reward_name,earned_at,reminder_count,last_reminder_at',
+              )
+              .eq('business_id', businessId)
+              .isFilter('claimed_at', null)
+              .order('earned_at', ascending: true))
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+
   RealtimeChannel watchStoreOrders(void Function() onChange) => _client
       .channel(
         'store-orders-$businessId-${DateTime.now().microsecondsSinceEpoch}',
@@ -141,7 +153,7 @@ class CloudStore {
   }
 
   Future<String> uploadStoreImage(String key, Uint8List bytes) async {
-    if (!RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(key) || bytes.length > 350000) {
+    if (!RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(key) || bytes.length > 1800000) {
       throw StateError('La imagen es demasiado grande. Elige otra foto.');
     }
     final bucket = _client.storage.from('storefront-images');
@@ -792,6 +804,29 @@ class CloudStore {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<Map<String, String>?> loadBusinessBranding() async {
+    final row = await _client
+        .from('businesses')
+        .select('name,wallet_logo_path,wallet_icon_path')
+        .eq('id', businessId)
+        .maybeSingle();
+    if (row == null) return null;
+    return {
+      'name': row['name'] as String? ?? '',
+      'logoPath': row['wallet_logo_path'] as String? ?? '',
+      'iconPath': row['wallet_icon_path'] as String? ?? '',
+    };
+  }
+
+  Future<Uint8List?> downloadBusinessMark({
+    required String logoPath,
+    required String iconPath,
+  }) async {
+    final notificationIcon = await downloadWalletIcon(iconPath);
+    if (notificationIcon != null) return notificationIcon;
+    return downloadWalletLogo(logoPath);
   }
 
   Future<String> uploadCardBackground({

@@ -17,21 +17,21 @@ class StorefrontScreen extends StatelessWidget {
   Widget build(BuildContext context) => Theme(
     data: Theme.of(context).copyWith(
       colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff171225),
-        primary: const Color(0xff171225),
+        seedColor: const Color(0xffed5264),
+        primary: const Color(0xffed5264),
         onPrimary: Colors.white,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           shape: const StadiumBorder(),
-          backgroundColor: const Color(0xff171225),
+          backgroundColor: const Color(0xffed5264),
           foregroundColor: Colors.white,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           shape: const StadiumBorder(),
-          foregroundColor: const Color(0xff171225),
+          foregroundColor: const Color(0xffed5264),
         ),
       ),
       scaffoldBackgroundColor: Colors.white,
@@ -521,8 +521,9 @@ class _StorefrontScreenState extends State<_StorefrontContent>
       );
     try {
       await _cloud!.saveStoreSettings({'categories': updated});
-      if (mounted)
+      if (mounted) {
         setState(() => _settings = {..._settings, 'categories': updated});
+      }
       return value;
     } catch (_) {
       _showError('No pudimos guardar la categoría. Vuelve a intentarlo.');
@@ -608,7 +609,7 @@ class _StorefrontScreenState extends State<_StorefrontContent>
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: category.text,
+                            initialValue: category.text,
                             decoration: const InputDecoration(
                               labelText: 'Categoría',
                               border: InputBorder.none,
@@ -624,8 +625,9 @@ class _StorefrontScreenState extends State<_StorefrontContent>
                                 )
                                 .toList(),
                             onChanged: (value) {
-                              if (value != null)
+                              if (value != null) {
                                 refresh(() => category.text = value);
+                              }
                             },
                           ),
                         ),
@@ -633,7 +635,7 @@ class _StorefrontScreenState extends State<_StorefrontContent>
                           tooltip: 'Crear categoría',
                           onPressed: () async {
                             final created = await _createStoreCategory();
-                            if (created != null && context.mounted)
+                            if (created != null && context.mounted) {
                               refresh(() {
                                 categories.removeWhere(
                                   (item) =>
@@ -652,6 +654,7 @@ class _StorefrontScreenState extends State<_StorefrontContent>
                                 );
                                 category.text = created;
                               });
+                            }
                           },
                           icon: const Icon(Icons.add),
                         ),

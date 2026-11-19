@@ -18,6 +18,39 @@ enum CustomerSegment {
   );
 }
 
+/// The three customer states shown to merchants. The detailed segment remains
+/// available internally so the cadence model can keep its existing behavior.
+enum CustomerAttention {
+  newCustomer('Nuevo'),
+  concerning('Preocupante'),
+  risk('Riesgo');
+
+  const CustomerAttention(this.label);
+
+  final String label;
+
+  static CustomerAttention? fromSegment(CustomerSegment segment) => switch (
+    segment
+  ) {
+    CustomerSegment.newCustomer => CustomerAttention.newCustomer,
+    CustomerSegment.atRisk => CustomerAttention.concerning,
+    CustomerSegment.inactive => CustomerAttention.risk,
+    CustomerSegment.frequent ||
+    CustomerSegment.regular ||
+    CustomerSegment.occasional ||
+    CustomerSegment.recovered => null,
+  };
+
+  String get explanation => switch (this) {
+    CustomerAttention.newCustomer =>
+      'Todavía está construyendo su historial.',
+    CustomerAttention.concerning =>
+      'Se está atrasando respecto a su ritmo habitual.',
+    CustomerAttention.risk =>
+      'Superó ampliamente el tiempo que suele tardar en volver.',
+  };
+}
+
 class CustomerIntelligence {
   const CustomerIntelligence({
     required this.segment,
@@ -64,6 +97,13 @@ class CustomerIntelligence {
   final List<String> reasonCodes;
   final String explanation;
   final DateTime? updatedAt;
+
+  CustomerAttention? get attention => CustomerAttention.fromSegment(segment);
+
+  String? get statusLabel => attention?.label;
+
+  String get statusExplanation =>
+      attention?.explanation ?? 'Su frecuencia se mantiene dentro de lo habitual.';
 
   String get valueLabel => switch (valueScore) {
     >= 0.75 => 'Valor alto',

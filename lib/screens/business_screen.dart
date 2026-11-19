@@ -59,7 +59,7 @@ class _BusinessScreenState extends State<BusinessScreen> {
     final picked = await ImagePicker().pickImage(
       source: ImageSource.gallery,
       maxWidth: 1600,
-      imageQuality: 95,
+      imageQuality: 100,
     );
     if (picked == null || !mounted) return;
     try {
@@ -71,9 +71,7 @@ class _BusinessScreenState extends State<BusinessScreen> {
       final crop = await Navigator.of(context).push<WalletCropResult>(
         MaterialPageRoute(
           builder: (_) => WalletImageCropScreen(
-            image: Uint8List.fromList(
-              image_lib.encodeJpg(oriented, quality: 92),
-            ),
+            image: Uint8List.fromList(image_lib.encodePng(oriented, level: 4)),
             title: 'Ajustar icono',
             aspectRatio: 1,
             oneXWidth: 29,
